@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Game\Models;
 
+use App\Game\Casts\EntitiesCollectionCast;
 use App\Game\Casts\GameBoardCast;
 use App\Game\Data\GameType;
 use App\Support\Models\HashedIdTrait;
@@ -38,6 +39,7 @@ class GameState extends Model
         return [
             'type' => GameType::class,
             'board' => GameBoardCast::class,
+            'entities' => EntitiesCollectionCast::class,
         ];
     }
 }

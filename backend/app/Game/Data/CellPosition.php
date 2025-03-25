@@ -10,4 +10,19 @@ readonly class CellPosition
         public int $col,
         public int $row,
     ) {}
+
+    public function add(Vector $vector): self
+    {
+        return new self($this->col + $vector->col, $this->row + $vector->row);
+    }
+
+    public function is(CellPosition $position): bool
+    {
+        return $this->col === $position->col && $this->row === $position->row;
+    }
+
+    public function difference(CellPosition $other): Vector
+    {
+        return new Vector($this->row - $other->row, $this->col - $other->col);
+    }
 }

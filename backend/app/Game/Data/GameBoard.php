@@ -21,25 +21,25 @@ class GameBoard implements Arrayable
     {
         $instance = new self($board['rows'], $board['cols']);
         foreach ($board['cells'] as $cell) {
-            $instance->setCell($cell['row'], $cell['col'], Cell::fromArray(array_except($cell, ['row', 'col'])));
+            $instance->setCell(new CellPosition($cell['col'], $cell['row']), Cell::fromArray(array_except($cell, ['row', 'col'])));
         }
 
         return $instance;
     }
 
-    public function setCell(int $row, int $col, Cell $cell): void
+    public function setCell(CellPosition $position, Cell $cell): void
     {
-        $this->cells[$row][$col] = $cell;
+        $this->cells[$position->row][$position->col] = $cell;
     }
 
-    public function getCell(int $row, int $col): ?Cell
+    public function getCell(CellPosition $position): ?Cell
     {
-        return $this->cells[$row][$col] ?? null;
+        return $this->cells[$position->row][$position->col] ?? null;
     }
 
-    public function hasCell(int $row, int $col): bool
+    public function hasCell(CellPosition $position): bool
     {
-        return isset($this->cells[$row][$col]);
+        return isset($this->cells[$position->row][$position->col]);
     }
 
     public function pushCell(Cell $newCell): void

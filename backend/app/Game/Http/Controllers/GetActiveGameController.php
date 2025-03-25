@@ -11,6 +11,6 @@ class GetActiveGameController
 {
     public function __invoke(GameManager $gameManager): GameStateResource
     {
-        return GameStateResource::make($gameManager->getActiveGame());
+        return GameStateResource::make($gameManager->getActiveGame())->withAllowedTurns();
     }
 }

@@ -4,7 +4,6 @@ export default {
     "./{components,pages}/**/*.{js,jsx}",
   ],
   theme: {
-    extend: {},
   },
   plugins: [],
 }

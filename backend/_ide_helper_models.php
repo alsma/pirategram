@@ -24,6 +24,7 @@ namespace App\Game\Models{
  * @property-read \App\User\Models\User|null $user
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GamePlayer newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GamePlayer newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GamePlayer ofHashedId(string $hashedId)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GamePlayer query()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GamePlayer whereGameStateId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GamePlayer whereId($value)
@@ -41,6 +42,7 @@ namespace App\Game\Models{
  * @property int $id
  * @property \App\Game\Data\GameType $type
  * @property \App\Game\Data\GameBoard $board
+ * @property \Illuminate\Support\Collection|null $entities
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property int|null $current_turn_game_player_id
@@ -51,10 +53,12 @@ namespace App\Game\Models{
  * @property-read int|null $users_count
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState ofHashedId(string $hashedId)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState query()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereBoard($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereCreatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereCurrentTurnGamePlayerId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereEntities($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereType($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereUpdatedAt($value)

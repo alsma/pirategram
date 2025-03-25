@@ -17,6 +17,7 @@ return new class extends Migration
             $table->id();
             $table->string('type');
             $table->json('board');
+            $table->json('entities')->nullable();
             $table->timestamps();
             $table->foreignIdFor(GamePlayer::class, 'current_turn_game_player_id')->nullable();
         });

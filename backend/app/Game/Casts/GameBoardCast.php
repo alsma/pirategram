@@ -16,12 +16,12 @@ class GameBoardCast implements CastsAttributes
         return GameBoard::fromArray(Json::decode($value));
     }
 
-    public function set(Model $model, string $key, mixed $value, array $attributes): string
+    public function set(Model $model, string $key, mixed $value, array $attributes): array
     {
         if (!$value instanceof GameBoard) {
             throw new \InvalidArgumentException('$value must be GameBoard instance');
         }
 
-        return Json::encode($value->toArray());
+        return [$key => Json::encode($value->toArray())];
     }
 }

@@ -10,10 +10,14 @@ use App\Game\Data\GameBoard;
 use App\Game\Data\GameType;
 use App\Game\Models\GamePlayer;
 use App\Game\Models\GameState;
+use App\Game\Support\GameTypeManagersAwareTrait;
 use App\User\Models\User;
+use Illuminate\Support\Collection;
 
 class GameManager
 {
+    use GameTypeManagersAwareTrait;
+
     public function getActiveGame(): GameState
     {
         return transaction(function () {
@@ -30,11 +34,15 @@ class GameManager
 
     public function newGame(): GameState
     {
-        return transaction(function () {
+        $gameType = GameType::Classic;
+
+        return transaction(function () use ($gameType) {
+            $gameTypeManager = $this->getGameTypeManager($gameType);
 
             $game = new GameState;
-            $game->type = GameType::Classic;
-            $game->board = app(ClassicGameManager::class)->generate();
+            $game->type = $gameType;
+            $game->board = $gameTypeManager->generateBoard();
+            $game->entities = collect();
             $game->save();
 
             $players = collect();
@@ -52,6 +60,8 @@ class GameManager
 
             $game->setRelation('players', $players);
 
+            $game->entities = $gameTypeManager->generateEntities($players);
+
             $game->currentTurn()->associate($players->first());
             $game->save();
 
@@ -63,18 +73,19 @@ class GameManager
     {
         return transaction(function () use ($game, $user, $position) {
             $game = GameState::query()->lockForUpdate()->findOrFail($game->id);
+            // TODO check that user belongs to game
             if ($game->currentTurn->user->isNot($user)) {
                 throw new LocalizedException('game_another_user_turn');
             }
 
             /** @var GameBoard $gameBoard */
             $gameBoard = $game->board;
-            if (!$gameBoard->hasCell($position->col, $position->row)) {
+            if (!$gameBoard->hasCell($position)) {
                 throw new LocalizedException('game_invalid_turn_position');
             }
 
-            $updatedCell = $gameBoard->getCell($position->col, $position->row)->reveal();
-            $gameBoard->setCell($position->row, $position->col, $updatedCell);
+            $updatedCell = $gameBoard->getCell($position)->reveal();
+            $gameBoard->setCell($position, $updatedCell);
 
             $nextTurn = $game->players
                 ->sortBy('order', SORT_NUMERIC)
@@ -88,5 +99,13 @@ class GameManager
 
             return $game;
         });
+    }
+
+    public function getAllowedTurnsForGameEntities(GameState $gameState): Collection
+    {
+        $entities = $gameState->entities->where('gamePlayerId', $gameState->current_turn_game_player_id);
+        $gameTypeManager = $this->getGameTypeManager($gameState->type);
+
+        return $gameTypeManager->getAllowedTurnsForEntities($gameState->board, $entities);
     }
 }

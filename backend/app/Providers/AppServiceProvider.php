@@ -14,20 +14,27 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         JsonResource::withoutWrapping();
-
-        if ($this->app->isLocal()) {
-            Model::preventLazyLoading();
-            Model::preventAccessingMissingAttributes();
-            Model::preventSilentlyDiscardingAttributes();
-        }
     }
 
     public function boot(): void
     {
-        if ($this->app->isLocal() && $this->app->make('config')->get('app.debug')) {
-            $this->app->make('db')->listen(function (QueryExecuted $query) {
-                logger()->channel('db-queries')->debug("Time: {$query->time} Query: {$query->sql}", $query->bindings);
-            });
+        $this->listenQueryDebugEvents();
+    }
+
+    public function listenQueryDebugEvents(): void
+    {
+        if (!($this->app->isLocal() && $this->app->make('config')->get('app.debug'))) {
+            return;
         }
+
+        Model::preventLazyLoading();
+        Model::preventAccessingMissingAttributes();
+        Model::preventSilentlyDiscardingAttributes();
+        $this->app->make('db')
+            ->listen(function (QueryExecuted $query) {
+                $this->app->make('log')
+                    ->channel('db-queries')
+                    ->debug("Time: {$query->time} Query: {$query->sql}", $query->bindings);
+            });
     }
 }

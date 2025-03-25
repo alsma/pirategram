@@ -1,5 +1,6 @@
 <?php
 
+use Monolog\Formatter\LineFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -125,6 +126,13 @@ return [
 
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
+        ],
+
+        'db-queries' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/laravel-db-queries.log'),
+            'formatter' => LineFormatter::class,
+            'level' => env('LOG_LEVEL', 'debug'),
         ],
 
     ],

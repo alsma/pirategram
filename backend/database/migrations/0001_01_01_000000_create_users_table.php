@@ -12,12 +12,16 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
+            $table->string('username')->unique();
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
-            $table->rememberToken();
+            $table->string('password')->nullable();
+            $table->string('api_token', 60)->nullable();
+            $table->string('language', 10);
             $table->timestamps();
+
+            $table->index('api_token');
+            $table->index('username');
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {

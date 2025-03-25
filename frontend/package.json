@@ -1,0 +1,31 @@
+{
+  "scripts": {
+    "dev": "npm run server:dev",
+    "prod": "npm run build && npm run server:prod",
+    "build": "vite build",
+    "server:dev": "node ./server",
+    "server:prod": "cross-env NODE_ENV=production node ./server"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "compression": "^1.7.5",
+    "cross-env": "^7.0.3",
+    "express": "^4.21.2",
+    "node-fetch": "^3.3.2",
+    "prop-types": "15.8.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sirv": "^3.0.0",
+    "vike": "^0.4.212",
+    "vite": "^6.0.5"
+  },
+  "type": "module",
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17"
+  },
+  "imports": {
+    "@/*": "./*.js"
+  }
+}

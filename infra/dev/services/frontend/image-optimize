@@ -1,0 +1,96 @@
+#!/usr/bin/env node
+
+var childProcess = require('child_process')
+var crypto = require('crypto')
+var fs = require('fs')
+
+var args = process.argv.slice(2)
+var path = args[0] || '.'
+
+function fileHash(filename, algorithm = 'md5') {
+  return new Promise((resolve, reject) => {
+    // Algorithm depends on availability of OpenSSL on platform
+    // Another algorithms: 'sha1', 'md5', 'sha256', 'sha512' ...
+    const shasum = crypto.createHash(algorithm)
+    try {
+      const s = fs.ReadStream(filename)
+      s.on('data', function (data) {
+        shasum.update(data)
+      })
+      // making digest
+      s.on('end', function () {
+        const hash = shasum.digest('hex')
+        return resolve(hash)
+      })
+    } catch (error) {
+      return reject(new Error('calc fail'))
+    }
+  })
+}
+
+async function repeatUntilMatch(main, condition) {
+  let next = await condition()
+  let retries = 0
+  const previous = []
+  do {
+    if (retries !== 0) {
+      process.stdout.write('*')
+    }
+    previous.push(next)
+    await main()
+    next = await condition()
+    if (retries > 10) {
+      console.log(next)
+    }
+    retries++
+  } while (!previous.includes(next))
+}
+
+let svgFiles = childProcess.execSync(`find ${path} |grep "svg\\\\|png"`).toString().split('\n')
+svgFiles.pop() // remove last empty file
+
+// filter assets which could be broken by algo
+const ignoredResources = ['bg-wheel-l.svg', 'assets/fonts', 'static/currencies.svg', 'lang/br.svg']
+svgFiles = svgFiles.filter((fileName) => {
+  const resource = ignoredResources.find((ignoredResource) => fileName.indexOf(ignoredResource) !== -1)
+  return !resource
+})
+
+;(async () => {
+  for (var i = 0; i < svgFiles.length; i++) {
+    const filename = svgFiles[i]
+    if (filename.indexOf('node_modules') !== -1) {
+      continue
+    }
+    if (filename.substring(-4) === '.png') {
+      try {
+        process.stdout.write('.')
+        await repeatUntilMatch(() => {
+          childProcess.execFileSync('pngquant', ['-f', '--quality=100', '--speed=1', '--skip-if-larger', '-o', filename, filename])
+        }, async () => fileHash(filename))
+      } catch (e) {
+        console.log(e.message)
+        console.log(`\nOptimization skipped for file '${filename}'. Cannot maintain 100% quality...`)
+      }
+    }
+    if (filename.substring(-4) === '.svg') {
+      try {
+        process.stdout.write('.')
+        if (/@keyframes/.test(fs.readFileSync(filename, 'utf8'))) {
+          console.log(`\nOptimization skipped for file '${filename}'. SVGO brokes @keyframes`)
+        } else {
+          await repeatUntilMatch(() => {
+            childProcess.execSync(`svgo --multipass -i ${filename} -o ${filename}`)
+          }, async () => fileHash(filename))
+        }
+      } catch (e) {
+        console.log('')
+        console.log('Please install SVGO `npm install svgo --global`')
+        console.log('before running this tool')
+        console.log('')
+      }
+    }
+  }
+})()
+
+console.log('')

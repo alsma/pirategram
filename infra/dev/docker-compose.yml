@@ -24,6 +24,18 @@ services:
       - db
       - redis
 
+  frontend:
+    build:
+      context: services/frontend
+    expose:
+      - "3000"
+      - "24678"
+    ports:
+      - "24678:24678"
+    volumes:
+      - ${FRONTEND_CODE_PATH_HOST}:${FRONTEND_CODE_PATH_CONTAINER}
+      - ${DATA_PATH_HOST}/frontend/home:/root
+
   db:
     build: services/percona
     platform: linux/x86_64

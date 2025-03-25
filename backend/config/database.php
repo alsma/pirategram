@@ -18,6 +18,9 @@ return [
 
     'default' => env('DB_CONNECTION', 'sqlite'),
 
+    // DB transaction attempts
+    'tx_attempts' => 3,
+
     /*
     |--------------------------------------------------------------------------
     | Database Connections

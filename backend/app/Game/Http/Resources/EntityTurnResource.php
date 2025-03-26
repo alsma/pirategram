@@ -14,9 +14,8 @@ class EntityTurnResource extends JsonResource
     {
         return [
             'entityId' => $this->resource->entityId,
-            'col' => $this->resource->cellPosition->col,
-            'row' => $this->resource->cellPosition->row,
-            'allowedWithCoin' => $this->resource->allowedWithCoins,
+            'col' => $this->resource->position->col,
+            'row' => $this->resource->position->row,
         ];
     }
 }

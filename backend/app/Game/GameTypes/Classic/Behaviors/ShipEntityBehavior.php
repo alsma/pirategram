@@ -6,9 +6,14 @@ namespace App\Game\GameTypes\Classic\Behaviors;
 
 use App\Game\Behaviors\BaseEntityBehavior;
 use App\Game\Data\CellPosition;
+use App\Game\Data\CellPositionSet;
+use App\Game\Data\CellType;
+use App\Game\Data\Context;
 use App\Game\Data\Entity;
+use App\Game\Data\EntityTurn;
 use App\Game\Data\EntityType;
 use App\Game\Models\GameState;
+use Illuminate\Support\Collection;
 
 class ShipEntityBehavior extends BaseEntityBehavior
 {
@@ -38,5 +43,24 @@ class ShipEntityBehavior extends BaseEntityBehavior
             ->merge($killedEnemies);
 
         $game->entities = $game->entities->updateEntities($updatedEntities);
+    }
+
+    /** {@inheritDoc} */
+    public function processPossibleTurns(Collection $possibleTurns, Entity $entity, Collection $entities, Context $context): Collection
+    {
+        /** @var CellPositionSet $shipBoundariesSet */
+        $shipBoundariesSet = $context->mustGet('shipTurnBoundariesSet');
+
+        return $possibleTurns->filter(function (EntityTurn $turn) use ($shipBoundariesSet) {
+            if ($turn->cell->type !== CellType::Water) {
+                return false;
+            }
+
+            if ($shipBoundariesSet->exists($turn->position)) {
+                return false;
+            }
+
+            return true;
+        });
     }
 }

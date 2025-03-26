@@ -94,7 +94,7 @@ class GameManager
 
             $allowedTurns = $this->getAllowedTurnsForGameEntities($gameState);
             $hasAllowedTurn = $allowedTurns->where('entityId', $entityId)
-                ->where(fn (EntityTurn $entityTurn) => $entityTurn->cellPosition->is($position))
+                ->where(fn (EntityTurn $entityTurn) => $entityTurn->position->is($position))
                 ->isNotEmpty();
             if (!$hasAllowedTurn) {
                 throw new LocalizedException('game_invalid_turn_position');
@@ -111,9 +111,8 @@ class GameManager
 
     public function getAllowedTurnsForGameEntities(GameState $gameState): Collection
     {
-        $entities = $gameState->entities->where('gamePlayerId', $gameState->current_turn_game_player_id);
         $gameTypeManager = $this->getGameTypeManager($gameState->type);
 
-        return $gameTypeManager->getAllowedTurnsForEntities($gameState->board, $entities);
+        return $gameTypeManager->getAllowedTurns($gameState->board, $gameState->entities, $gameState->currentTurn);
     }
 }

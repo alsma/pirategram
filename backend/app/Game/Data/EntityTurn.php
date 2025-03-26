@@ -8,7 +8,7 @@ readonly class EntityTurn
 {
     public function __construct(
         public string $entityId,
-        public CellPosition $cellPosition,
-        public bool $allowedWithCoins = false, // TODO think how prevent entity type leak here
+        public Cell $cell,
+        public CellPosition $position,
     ) {}
 }

@@ -12,6 +12,13 @@ class MakeTurnController
 {
     public function __invoke(GameManager $gameManager, MakeTurnRequest $request): GameStateResource
     {
-        return GameStateResource::make($gameManager->makeTurn($request->getGame(), $request->user(), $request->getPosition()))->withAllowedTurns();
+        $gameState = $gameManager->makeTurn(
+            $request->getGame(),
+            $request->user(),
+            $request->getEntityId(),
+            $request->getPosition()
+        );
+
+        return GameStateResource::make($gameState)->withAllowedTurns();
     }
 }

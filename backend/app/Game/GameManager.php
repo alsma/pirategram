@@ -6,6 +6,8 @@ namespace App\Game;
 
 use App\Exceptions\LocalizedException;
 use App\Game\Data\CellPosition;
+use App\Game\Data\Entity;
+use App\Game\Data\EntityTurn;
 use App\Game\Data\GameBoard;
 use App\Game\Data\GameType;
 use App\Game\Models\GamePlayer;
@@ -69,35 +71,41 @@ class GameManager
         });
     }
 
-    public function makeTurn(GameState $game, User $user, CellPosition $position): GameState
+    public function makeTurn(GameState $gameState, User $user, string $entityId, CellPosition $position): GameState
     {
-        return transaction(function () use ($game, $user, $position) {
-            $game = GameState::query()->lockForUpdate()->findOrFail($game->id);
+        return transaction(function () use ($gameState, $user, $entityId, $position) {
+            $gameState = GameState::query()->lockForUpdate()->findOrFail($gameState->id);
             // TODO check that user belongs to game
-            if ($game->currentTurn->user->isNot($user)) {
+            if ($gameState->currentTurn->user->isNot($user)) {
                 throw new LocalizedException('game_another_user_turn');
             }
 
+            /** @var Entity $entity */
+            $entity = $gameState->entities->firstWhere('id', $entityId);
+            if (!$entity) {
+                throw new LocalizedException('game_invalid_turn');
+            }
+
             /** @var GameBoard $gameBoard */
-            $gameBoard = $game->board;
+            $gameBoard = $gameState->board;
             if (!$gameBoard->hasCell($position)) {
                 throw new LocalizedException('game_invalid_turn_position');
             }
 
-            $updatedCell = $gameBoard->getCell($position)->reveal();
-            $gameBoard->setCell($position, $updatedCell);
-
-            $nextTurn = $game->players
-                ->sortBy('order', SORT_NUMERIC)
-                ->firstWhere('order', '>', $game->currentTurn->order);
-            if (!$nextTurn) {
-                $nextTurn = $game->players->firstWhere('order', 0);
+            $allowedTurns = $this->getAllowedTurnsForGameEntities($gameState);
+            $hasAllowedTurn = $allowedTurns->where('entityId', $entityId)
+                ->where(fn (EntityTurn $entityTurn) => $entityTurn->cellPosition->is($position))
+                ->isNotEmpty();
+            if (!$hasAllowedTurn) {
+                throw new LocalizedException('game_invalid_turn_position');
             }
 
-            $game->currentTurn()->associate($nextTurn);
-            $game->save();
+            $gameTypeManager = $this->getGameTypeManager($gameState->type);
+            $gameTypeManager->processTurn($gameState, $entity, $position);
 
-            return $game;
+            $gameState->finalizeTurn();
+
+            return $gameState;
         });
     }
 

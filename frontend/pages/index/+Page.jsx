@@ -10,6 +10,7 @@ function getPositionKey(col, row) {
 
 const EntityType = {
   Pirate: 'pirate',
+  Coin: 'coin',
 }
 
 const PirateClassesByTeamId = {
@@ -23,6 +24,11 @@ const PiratePositionByCnt = {
   0: 'top-2 left-2',
   1: 'top-2 left-6',
   2: 'top-6 left-4',
+}
+const CoinPositionByCnt = {
+  0: 'bottom-2 right -2',
+  1: 'bottom-4 right-6',
+  2: 'bottom-6 right-4',
 }
 
 function Page() {
@@ -90,7 +96,16 @@ function Page() {
     generate()
   }, [])
 
-  const handleCellClick = async (col, row) => {
+  const handleCellClick = async (selectedEntity, col, row) => {
+    if (!selectedEntity) {
+      return
+    }
+
+    const isAllowedTurn = allowedTurnsByEntityId[selectedEntity.id] && allowedTurnsByEntityId[selectedEntity.id][getPositionKey(col, row)]
+    if (!isAllowedTurn) {
+      return
+    }
+
     const resp = await fetch('/api/game/turn', {
       method: 'POST',
       headers: {
@@ -99,6 +114,7 @@ function Page() {
       },
       body: JSON.stringify({
         gameHash: gameState.hash,
+        entityId: selectedEntity.id,
         col,
         row,
       })
@@ -107,6 +123,7 @@ function Page() {
     const data = await resp.json()
 
     setGameState(data)
+    setSelectedEntity(null)
   }
 
   const handleEntityClick = async (entityId) => {
@@ -131,7 +148,7 @@ function Page() {
   const onCellClick = useCallback(async e => {
     const isCell = e.target.dataset.col !== undefined && e.target.dataset.row !== undefined
     if (isCell) {
-      return handleCellClick(e.target.dataset.col, e.target.dataset.row)
+      return handleCellClick(selectedEntity, e.target.dataset.col, e.target.dataset.row)
     }
 
     const entityId = e.target.dataset.entityId
@@ -195,7 +212,12 @@ function Page() {
                   const entities = entitiesByPosition[getPositionKey(colIdx, rowIdx)] || []
 
                   let pirateCnt = 0
+                  let coinCnt = 0
                   entities.forEach((e, i) => {
+                    if (e.isKilled === true) {
+                      return
+                    }
+
                     const isMyEntity = myPlayer?.hash === e.playerHash
                     const availableForSelection = isMyEntity ? 'outline-1 outline-offset-1 outline-dotted outline-yellow-300' : ''
                     const selected = selectedEntity?.id === e.id ? 'animate-bounce' : ''
@@ -213,6 +235,20 @@ function Page() {
                       )
 
                       pirateCnt++
+
+                      return
+                    } else if (e.type === EntityType.Coin) {
+                      const position = CoinPositionByCnt[coinCnt]
+
+                      children.push(
+                        <span
+                          key={`entity:${e.id}`}
+                          className={`cursor-pointer h-3 w-3 rounded-full border-4 absolute z-20 bg-amber-600 border-amber-600 ${position}`}
+                          data-entity-id={e.id}
+                        />
+                      )
+
+                      coinCnt++
 
                       return
                     }

@@ -14,6 +14,8 @@ use App\Game\Data\EntityTurn;
 use App\Game\Data\EntityType;
 use App\Game\Data\GameBoard;
 use App\Game\Data\Vector;
+use App\Game\Models\GameState;
+use App\Game\Support\BehaviorsAwareTrait;
 use Illuminate\Support\Collection;
 
 /**
@@ -23,6 +25,8 @@ use Illuminate\Support\Collection;
  */
 class ClassicGameManager implements GameTypeManager
 {
+    use BehaviorsAwareTrait;
+
     private const int BOARD_COLS = 13;
 
     private const int BOARD_ROWS = 13;
@@ -80,12 +84,8 @@ class ClassicGameManager implements GameTypeManager
 
     public function getAllowedTurnsForEntities(GameBoard $gameBoard, Collection $entities): Collection
     {
-        $shipBoundaries = $this->getShipTurnBoundariesSet();
-
         return $entities
-            ->map(function (Entity $entity) use ($entities, $shipBoundaries, $gameBoard) {
-                $turns = collect();
-
+            ->map(function (Entity $entity) use ($entities, $gameBoard) {
                 $nearestCells = Vector::createAroundVectors()
                     ->map(function (Vector $vector) use ($gameBoard, $entity) {
                         $cellPosition = $entity->position->add($vector);
@@ -98,46 +98,38 @@ class ClassicGameManager implements GameTypeManager
                         return [$cellPosition, $cell];
                     })
                     ->filter();
-                if ($entity->type === EntityType::Ship) {
-                    $turns = $nearestCells->map(function (array $turnData) use ($entity, $shipBoundaries) {
-                        [$cellPosition, $cell] = $turnData;
 
-                        if ($cell->type !== CellType::Water) {
-                            return null;
-                        }
-
-                        if ($shipBoundaries->exists($cellPosition)) {
-                            return null;
-                        }
-
-                        return new EntityTurn($entity->id, $cellPosition);
-                    })->filter();
-                } elseif ($entity->type === EntityType::Pirate) {
-                    $isOnShip = $entities->contains(fn(Entity $e) => $e->type === EntityType::Ship && $e->position->is($entity->position));
-
-                    $turns = $nearestCells->map(function (array $turnData) use ($isOnShip, $entities, $entity, $gameBoard) {
-                        [$cellPosition, $cell] = $turnData;
-
-                        if ($cell->type === CellType::Water) {
-                            $hasShipInPosition = $entities->contains(fn(Entity $e) => $e->type === EntityType::Ship && $e->position->is($cellPosition));
-                            if (!$hasShipInPosition) {
-                                return null;
-                            }
-                        }
-
-                        $vector = $cellPosition->difference($entity->position);
-                        // Restrict diagonal moves ONLY if the pirate is on a ship
-                        if ($isOnShip && (abs($vector->col) + abs($vector->row) !== 1)) {
-                            return null;
-                        }
-
-                        return new EntityTurn($entity->id, $cellPosition, $cell->revealed);
-                    })->filter();
-                }
-
-                return $turns;
+                return match ($entity->type) {
+                    EntityType::Ship => $this->getAllowedTurnsForShip($nearestCells, $entity),
+                    EntityType::Pirate => $this->getAllowedTurnsForPirate($nearestCells, $entity, $gameBoard, $entities),
+                    default => collect(),
+                };
             })
             ->flatten();
+    }
+
+    public function processTurn(GameState $gameState, Entity $entity, CellPosition $position): void
+    {
+        $positionToMove = $position;
+        $updatedEntity = $entity;
+
+        do {
+            $prevPosition = $updatedEntity->position;
+
+            $this->getEntityBehavior($entity->type)->move($gameState, $updatedEntity, $positionToMove);
+            $updatedEntity = $gameState->entities->firstOrFail('id', $updatedEntity->id);
+
+            $cell = $gameState->board->getCell($positionToMove);
+
+            $positionBeforeCellEnter = $updatedEntity->position;
+            $this->getCellBehavior($cell->type)->onEnter($gameState, $updatedEntity, $prevPosition, $cell, $positionToMove);
+            $updatedEntity = $gameState->entities->firstOrFail('id', $entity->id);
+
+            $updatedCell = $gameState->board->getCell($positionToMove)->reveal();
+            $gameState->board->setCell($positionToMove, $updatedCell);
+
+            $positionToMove = $updatedEntity->position;
+        } while (!$positionBeforeCellEnter->is($positionToMove));
     }
 
     private function getIslandCells(): array
@@ -220,18 +212,92 @@ class ClassicGameManager implements GameTypeManager
 
     private function getShipTurnBoundariesSet(): CellPositionSet
     {
-        return new CellPositionSet()
+        return (new CellPositionSet)
+            ->add(new CellPosition(0, 0))
+            ->add(new CellPosition(0, 1))
             ->add(new CellPosition(1, 0))
             ->add(new CellPosition(1, 1))
-            ->add(new CellPosition(0, 1))
-            ->add(new CellPosition(12, 2))
-            ->add(new CellPosition(11, 1))
             ->add(new CellPosition(11, 0))
-            ->add(new CellPosition(11, 12))
+            ->add(new CellPosition(11, 1))
+            ->add(new CellPosition(12, 0))
+            ->add(new CellPosition(12, 1))
             ->add(new CellPosition(11, 11))
             ->add(new CellPosition(12, 11))
-            ->add(new CellPosition(2, 12))
+            ->add(new CellPosition(11, 12))
+            ->add(new CellPosition(12, 12))
+            ->add(new CellPosition(0, 11))
+            ->add(new CellPosition(0, 12))
             ->add(new CellPosition(1, 11))
-            ->add(new CellPosition(0, 1));
+            ->add(new CellPosition(1, 12));
+    }
+
+    private function getPirateWaterTurnBoundariesSet(): CellPositionSet
+    {
+        return (new CellPositionSet)
+            ->add(new CellPosition(0, 1))
+            ->add(new CellPosition(1, 0))
+            ->add(new CellPosition(0, 0))
+            ->add(new CellPosition(11, 0))
+            ->add(new CellPosition(12, 1))
+            ->add(new CellPosition(12, 0))
+            ->add(new CellPosition(12, 11))
+            ->add(new CellPosition(11, 12))
+            ->add(new CellPosition(12, 12))
+            ->add(new CellPosition(0, 11))
+            ->add(new CellPosition(0, 12))
+            ->add(new CellPosition(1, 12));
+    }
+
+    private function getAllowedTurnsForShip(Collection $nearestCells, Entity $entity): Collection
+    {
+        $shipBoundaries = $this->getShipTurnBoundariesSet();
+
+        return $nearestCells->map(function (array $turnData) use ($entity, $shipBoundaries) {
+            [$cellPosition, $cell] = $turnData;
+
+            if ($cell->type !== CellType::Water) {
+                return null;
+            }
+
+            if ($shipBoundaries->exists($cellPosition)) {
+                return null;
+            }
+
+            return new EntityTurn($entity->id, $cellPosition);
+        })->filter();
+    }
+
+    private function getAllowedTurnsForPirate(Collection $nearestCells, Entity $entity, GameBoard $gameBoard, Collection $entities): Collection
+    {
+        $pirateWaterBoundaries = $this->getPirateWaterTurnBoundariesSet();
+
+        $isOnShip = $entities->contains(fn(Entity $e) => $e->type === EntityType::Ship && $e->position->is($entity->position));
+        $isInWater = !$isOnShip && $gameBoard->getCell($entity->position)?->type === CellType::Water;
+
+        return $nearestCells->map(function (array $turnData) use ($pirateWaterBoundaries, $isInWater, $isOnShip, $entities, $entity) {
+            [$cellPosition, $cell] = $turnData;
+
+            if ($cell->type === CellType::Water) {
+                if ($isInWater && $pirateWaterBoundaries->exists($cellPosition)) {
+                    return null;
+                }
+
+                $hasShipInPosition = $entities->contains(fn(Entity $e) => $e->type === EntityType::Ship && $e->position->is($cellPosition));
+                if (!($isInWater || $hasShipInPosition)) {
+                    return null;
+                }
+            } else {
+                $vector = $cellPosition->difference($entity->position);
+                if ($isOnShip && (abs($vector->col) + abs($vector->row) !== 1)) {
+                    // Restrict diagonal moves ONLY if the pirate is on a ship
+                    return null;
+                } elseif ($isInWater) {
+                    // Restrict moves from water to ground
+                    return null;
+                }
+            }
+
+            return new EntityTurn($entity->id, $cellPosition, $cell->revealed);
+        })->filter();
     }
 }

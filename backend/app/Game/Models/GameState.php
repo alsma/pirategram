@@ -34,6 +34,21 @@ class GameState extends Model
         return $this->belongsTo(GamePlayer::class, 'current_turn_game_player_id');
     }
 
+    public function finalizeTurn(): self
+    {
+        $nextTurn = $this->players
+            ->sortBy('order', SORT_NUMERIC)
+            ->firstWhere('order', '>', $this->currentTurn->order);
+        if (!$nextTurn) {
+            $nextTurn = $this->players->firstWhere('order', 0);
+        }
+
+        $this->currentTurn()->associate($nextTurn);
+        $this->save();
+
+        return $this;
+    }
+
     protected function casts(): array
     {
         return [

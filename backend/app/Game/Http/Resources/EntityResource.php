@@ -16,9 +16,10 @@ class EntityResource extends JsonResource
         return [
             'id' => $this->resource->id,
             'type' => $this->resource->type->value,
+            'isKilled' => $this->resource->isKilled,
             'col' => $this->resource->position->col,
             'row' => $this->resource->position->row,
-            'playerHash' => GamePlayer::keyToHashedId($this->resource->gamePlayerId),
+            'playerHash' => $this->resource->gamePlayerId ? GamePlayer::keyToHashedId($this->resource->gamePlayerId) : null,
         ];
     }
 }

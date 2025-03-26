@@ -14,6 +14,7 @@ readonly class Entity implements Arrayable
         public EntityType $type,
         public CellPosition $position,
         public ?int $gamePlayerId = null,
+        public ?bool $isKilled = null,
         ?string $id = null,
     ) {
         $this->id = $id ?? $type->value.':'.str_random(6);
@@ -25,6 +26,7 @@ readonly class Entity implements Arrayable
             EntityType::from($data['type']),
             new CellPosition($data['col'], $data['row']),
             $data['game_player_id'] ?? null,
+            $data['is_killed'] ?? null,
             $data['id'] ?? null,
         );
     }
@@ -35,8 +37,24 @@ readonly class Entity implements Arrayable
             'id' => $this->id,
             'type' => $this->type->value,
             'game_player_id' => $this->gamePlayerId,
+            'is_killed' => $this->isKilled,
             'col' => $this->position->col,
             'row' => $this->position->row,
         ];
+    }
+
+    public function is(Entity $entity): bool
+    {
+        return $this->id === $entity->id;
+    }
+
+    public function updatePosition(CellPosition $position): self
+    {
+        return new self($this->type, $position, $this->gamePlayerId, $this->isKilled, $this->id);
+    }
+
+    public function kill(): self
+    {
+        return new self($this->type, $this->position, $this->gamePlayerId, true, $this->id);
     }
 }

@@ -16,6 +16,10 @@ trait GameTypeManagersAwareTrait
 
     public function registerGameTypeManager(GameType $gameType, string $className): void
     {
+        if (!is_a($className, GameTypeManager::class, true)) {
+            throw new RuntimeException("Class {$className} must be an instance of GameTypeManager");
+        }
+
         $this->gameTypesManagers[$gameType->value] = $className;
     }
 

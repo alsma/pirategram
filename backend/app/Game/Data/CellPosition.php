@@ -23,6 +23,6 @@ readonly class CellPosition
 
     public function difference(CellPosition $other): Vector
     {
-        return new Vector($this->row - $other->row, $this->col - $other->col);
+        return new Vector($this->col - $other->col, $this->row - $other->row);
     }
 }

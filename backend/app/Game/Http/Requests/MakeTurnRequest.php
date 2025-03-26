@@ -15,6 +15,7 @@ class MakeTurnRequest extends FormRequest
     {
         return [
             'gameHash' => 'required|string',
+            'entityId' => 'required|string',
             'col' => 'nullable|numeric',
             'row' => 'nullable|numeric',
         ];
@@ -29,6 +30,11 @@ class MakeTurnRequest extends FormRequest
     {
         // TODO fix it
         return $this->getGame()->currentTurn->user;
+    }
+
+    public function getEntityId(): string
+    {
+        return $this->str('entityId')->toString();
     }
 
     public function getPosition(): CellPosition

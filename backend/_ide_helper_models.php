@@ -42,7 +42,7 @@ namespace App\Game\Models{
  * @property int $id
  * @property \App\Game\Data\GameType $type
  * @property \App\Game\Data\GameBoard $board
- * @property \Illuminate\Support\Collection|null $entities
+ * @property \App\Game\Data\EntityCollection|null $entities
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property int|null $current_turn_game_player_id

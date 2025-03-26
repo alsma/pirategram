@@ -11,8 +11,8 @@ class GameBoard implements Arrayable
     public array $cells;
 
     public function __construct(
-        private readonly int $rows,
-        private readonly int $cols,
+        public readonly int $rows,
+        public readonly int $cols,
     ) {
         $this->cells = array_fill(0, $this->rows, array_fill(0, $this->cols, null));
     }

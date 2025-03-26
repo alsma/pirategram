@@ -178,6 +178,7 @@ function Page() {
 
                   let img
                   if (cell.revealed) {
+                    console.log(cell, colIdx, rowIdx)
                     const cellImgProps = {}
                     if (cell.direction) {
                       cellImgProps.style = {
@@ -194,6 +195,7 @@ function Page() {
                       alt={`${cell.type} cell`}
                       data-col={colIdx}
                       data-row={rowIdx}
+                      {...cellImgProps}
                     />
                   } else {
                     img = <img

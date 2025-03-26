@@ -31,10 +31,12 @@ class ClassicGameManager implements GameTypeManager
 
     private const int BOARD_ROWS = 13;
 
+    private const int MAX_RECURSIVE_TURNS = 10;
+
     public function generateBoard(): GameBoard
     {
         $seed = str_random();
-        $seedInt = (int)hexdec(substr(hash('sha256', $seed), 0, 8));
+        $seedInt = (int) hexdec(substr(hash('sha256', $seed), 0, 8));
         mt_srand($seedInt);
 
         $result = new GameBoard(self::BOARD_ROWS, self::BOARD_COLS);
@@ -112,23 +114,33 @@ class ClassicGameManager implements GameTypeManager
     {
         $positionToMove = $position;
         $updatedEntity = $entity;
+        $prevPosition = $updatedEntity->position;
+
+        $iterations = 0;
 
         do {
-            $prevPosition = $updatedEntity->position;
+            if ($iterations > self::MAX_RECURSIVE_TURNS) {
+                $updatedEntity = $entity->kill();
+                $gameState->entities = $gameState->entities->updateEntities(collect([$updatedEntity]));
+
+                return;
+            }
 
             $this->getEntityBehavior($entity->type)->move($gameState, $updatedEntity, $positionToMove);
-            $updatedEntity = $gameState->entities->firstOrFail('id', $updatedEntity->id);
+            $updatedEntity = $gameState->entities->getEntityByIdOrFail($updatedEntity->id);
 
             $cell = $gameState->board->getCell($positionToMove);
 
             $positionBeforeCellEnter = $updatedEntity->position;
             $this->getCellBehavior($cell->type)->onEnter($gameState, $updatedEntity, $prevPosition, $cell, $positionToMove);
-            $updatedEntity = $gameState->entities->firstOrFail('id', $entity->id);
+            $updatedEntity = $gameState->entities->getEntityByIdOrFail($entity->id);
 
             $updatedCell = $gameState->board->getCell($positionToMove)->reveal();
             $gameState->board->setCell($positionToMove, $updatedCell);
 
+            $prevPosition = $positionBeforeCellEnter;
             $positionToMove = $updatedEntity->position;
+            $iterations++;
         } while (!$positionBeforeCellEnter->is($positionToMove));
     }
 
@@ -271,7 +283,7 @@ class ClassicGameManager implements GameTypeManager
     {
         $pirateWaterBoundaries = $this->getPirateWaterTurnBoundariesSet();
 
-        $isOnShip = $entities->contains(fn(Entity $e) => $e->type === EntityType::Ship && $e->position->is($entity->position));
+        $isOnShip = $entities->contains(fn (Entity $e) => $e->type === EntityType::Ship && $e->position->is($entity->position));
         $isInWater = !$isOnShip && $gameBoard->getCell($entity->position)?->type === CellType::Water;
 
         return $nearestCells->map(function (array $turnData) use ($pirateWaterBoundaries, $isInWater, $isOnShip, $entities, $entity) {
@@ -282,7 +294,7 @@ class ClassicGameManager implements GameTypeManager
                     return null;
                 }
 
-                $hasShipInPosition = $entities->contains(fn(Entity $e) => $e->type === EntityType::Ship && $e->position->is($cellPosition));
+                $hasShipInPosition = $entities->contains(fn (Entity $e) => $e->type === EntityType::Ship && $e->position->is($cellPosition));
                 if (!($isInWater || $hasShipInPosition)) {
                     return null;
                 }

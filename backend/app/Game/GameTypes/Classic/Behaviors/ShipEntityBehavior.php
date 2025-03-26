@@ -19,7 +19,7 @@ class ShipEntityBehavior implements EntityBehavior
             ->pluck('id', 'id');
 
         $updatePiratesOnShip = $game->entities
-            ->filter(fn(Entity $e) => $e->type === EntityType::Pirate
+            ->filter(fn (Entity $e) => $e->type === EntityType::Pirate
                 && $teammatePlayerIds->has($e->gamePlayerId)
                 && $e->position->is($entity->position))
             ->map->updatePosition($position);
@@ -27,7 +27,7 @@ class ShipEntityBehavior implements EntityBehavior
         $updatedShip = $entity->updatePosition($position);
 
         $killedEnemies = $game->entities
-            ->filter(fn(Entity $e) => $e->type === EntityType::Pirate
+            ->filter(fn (Entity $e) => $e->type === EntityType::Pirate
                 && !$teammatePlayerIds->has($e->gamePlayerId)
                 && $e->position->is($position))
             ->map->kill();

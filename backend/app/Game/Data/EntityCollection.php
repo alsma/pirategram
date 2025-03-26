@@ -14,4 +14,9 @@ class EntityCollection extends Collection
 
         return $this->map(fn (Entity $entity) => $updatedEntitiesById[$entity->id] ?? $entity);
     }
+
+    public function getEntityByIdOrFail(string $id): ?Entity
+    {
+        return $this->firstOrFail('id', $id);
+    }
 }

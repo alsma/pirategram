@@ -86,6 +86,17 @@ function Page() {
   }, [gameState])
 
   useEffect(() => {
+    if (!allowedTurnsByEntityId) {
+      return
+    }
+
+    const allowedTurnEntityIds = Object.keys(allowedTurnsByEntityId)
+    if (allowedTurnEntityIds.length === 1) {
+      setSelectedEntity(gameState.entities.find(e => !!allowedTurnsByEntityId[e.id]))
+    }
+  }, [allowedTurnsByEntityId]);
+
+  useEffect(() => {
     const generate = async () => {
       const resp = await fetch('/api/game/active-game', { method: 'POST' })
       const data = await resp.json()
@@ -136,6 +147,10 @@ function Page() {
       return
     }
 
+    if (!allowedTurnsByEntityId[entity.id]) {
+      return
+    }
+
     if (selectedEntity?.id === entity.id) {
       setSelectedEntity(null)
 
@@ -178,7 +193,6 @@ function Page() {
 
                   let img
                   if (cell.revealed) {
-                    console.log(cell, colIdx, rowIdx)
                     const cellImgProps = {}
                     if (cell.direction) {
                       cellImgProps.style = {
@@ -221,7 +235,8 @@ function Page() {
                     }
 
                     const isMyEntity = myPlayer?.hash === e.playerHash
-                    const availableForSelection = isMyEntity ? 'outline-1 outline-offset-1 outline-dotted outline-yellow-300' : ''
+                    const hasTurns = allowedTurnsByEntityId[e.id]
+                    const availableForSelection = isMyEntity && hasTurns ? 'outline-1 outline-offset-1 outline-dotted outline-yellow-300' : ''
                     const selected = selectedEntity?.id === e.id ? 'animate-bounce' : ''
 
                     if (e.type === EntityType.Pirate) {

@@ -50,12 +50,18 @@ class PirateEntityBehavior extends BaseEntityBehavior
     /** {@inheritdoc} */
     public function processPossibleTurns(Collection $possibleTurns, Entity $entity, Collection $entities, Context $context): Collection
     {
+        $possibleTurns = parent::processPossibleTurns($possibleTurns, $entity, $entities, $context);
+
         /** @var Cell $currentCell */
         $currentCell = $context->mustGet('currentCell');
         /** @var CellPositionSet $pirateWaterTurnBoundariesSet */
         $pirateWaterTurnBoundariesSet = $context->mustGet('pirateWaterTurnBoundariesSet');
 
-        $isOnShip = $entities->contains(fn (Entity $e) => $e->type === EntityType::Ship && $e->position->is($entity->position));
+        // TODO check not only own ships but alies ships as well
+
+        $isOnShip = $entities->contains(fn (Entity $e) => $e->type === EntityType::Ship &&
+            $e->gamePlayerId === $entity->gamePlayerId &&
+            $e->position->is($entity->position));
         $isInWater = !$isOnShip && $currentCell->type === CellType::Water;
 
         return $possibleTurns->filter(function (EntityTurn $turn) use ($pirateWaterTurnBoundariesSet, $isOnShip, $entities, $isInWater, $entity) {
@@ -64,7 +70,9 @@ class PirateEntityBehavior extends BaseEntityBehavior
                     return false;
                 }
 
-                $hasShipInPosition = $entities->contains(fn (Entity $e) => $e->type === EntityType::Ship && $e->position->is($turn->position));
+                $hasShipInPosition = $entities->contains(fn (Entity $e) => $e->type === EntityType::Ship &&
+                    $e->gamePlayerId === $entity->gamePlayerId &&
+                    $e->position->is($turn->position));
                 if (!($isInWater || $hasShipInPosition)) {
                     return false;
                 }

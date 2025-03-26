@@ -75,12 +75,21 @@ class ClassicGameManager implements GameTypeManager
 
         $playerEntities = $entities->where('gamePlayerId', $turnPlayer->id);
 
+        $enforcedTurnsEntityByIds = $playerEntities->reject(function (Entity $entity) use ($gameBoard) {
+            $currentCell = $gameBoard->getCell($entity->position);
+            $cellBehavior = $this->getCellBehavior($currentCell->type);
+
+            return $cellBehavior->allowsEntityToStay();
+        })->keyBy->id;
+
         return $playerEntities
+            ->when($enforcedTurnsEntityByIds->isNotEmpty())->filter(fn (Entity $entity) => $enforcedTurnsEntityByIds->has($entity->id))
             ->map(function (Entity $entity) use ($gameBoard, $entities, $turnContextData) {
+                $currentCell = $gameBoard->getCell($entity->position);
+                $turnContext = new Context(array_merge($turnContextData, compact('currentCell')));
+
                 $entityBehavior = $this->getEntityBehavior($entity->type);
-                $turnContext = new Context(array_merge($turnContextData, [
-                    'currentCell' => $gameBoard->getCell($entity->position),
-                ]));
+                $cellBehavior = $this->getCellBehavior($currentCell->type);
 
                 return Vector::createAroundVectors()
                     ->map(function (Vector $vector) use ($gameBoard, $entity) {
@@ -93,7 +102,8 @@ class ClassicGameManager implements GameTypeManager
                         return new EntityTurn($entity->id, $cell, $position);
                     })
                     ->filter()
-                    ->pipe(fn (Collection $possibleTurns) => $entityBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext));
+                    ->pipe(fn (Collection $possibleTurns) => $entityBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext))
+                    ->pipe(fn (Collection $possibleTurns) => $cellBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext));
             })
             ->flatten();
     }

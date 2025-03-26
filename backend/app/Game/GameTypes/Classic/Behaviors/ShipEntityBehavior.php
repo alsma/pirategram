@@ -48,6 +48,8 @@ class ShipEntityBehavior extends BaseEntityBehavior
     /** {@inheritDoc} */
     public function processPossibleTurns(Collection $possibleTurns, Entity $entity, Collection $entities, Context $context): Collection
     {
+        $possibleTurns = parent::processPossibleTurns($possibleTurns, $entity, $entities, $context);
+
         /** @var CellPositionSet $shipBoundariesSet */
         $shipBoundariesSet = $context->mustGet('shipTurnBoundariesSet');
 

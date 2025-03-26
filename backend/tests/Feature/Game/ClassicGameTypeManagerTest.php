@@ -219,6 +219,8 @@ class ClassicGameTypeManagerTest extends TestCase
         $player->team_id = 0;
         $player->save();
 
+        $gameState->currentTurn()->associate($player);
+
         return [$gameState, $player];
     }
 }

@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Game\GameTypes\Classic\Behaviors;
 
-use App\Game\Behaviors\EntityBehavior;
+use App\Game\Behaviors\BaseEntityBehavior;
 use App\Game\Data\CellPosition;
 use App\Game\Data\Entity;
 use App\Game\Data\EntityType;
 use App\Game\Models\GameState;
 
-class ShipEntityBehavior implements EntityBehavior
+class ShipEntityBehavior extends BaseEntityBehavior
 {
     public function move(GameState $game, Entity $entity, CellPosition $position): void
     {

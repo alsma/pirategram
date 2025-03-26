@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Game\GameTypes\Classic\Behaviors;
 
+use App\Exceptions\RuntimeException;
 use App\Game\Behaviors\BaseCellBehavior;
 use App\Game\Behaviors\RotatableCellBehaviorTrait;
 use App\Game\Data\Cell;
@@ -13,23 +14,23 @@ use App\Game\Data\Entity;
 use App\Game\Data\Vector;
 use App\Game\Models\GameState;
 
-class CannonBarrelCellBehavior extends BaseCellBehavior
+class SingleArrowCellBehavior extends BaseCellBehavior
 {
     use RotatableCellBehaviorTrait;
 
     public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void
     {
-        $baseVector = new Vector(0, -1);
+        $baseVector = match ($cell->type) {
+            CellType::Arrow1 => new Vector(0, -1),
+            CellType::Arrow1Diagonal => new Vector(1, -1),
+            default => throw new RuntimeException('Unexpected cell type.')
+        };
+
         $vector = $this->rotateVector($cell->direction, $baseVector);
 
-        $newPosition = $position;
-
-        do {
-            $newPosition = $newPosition->add($vector);
-            $newCell = $gameState->board->getCell($newPosition);
-        } while ($newCell->type !== CellType::Water);
-
+        $newPosition = $entity->position->add($vector);
         $updatedPirate = $entity->updatePosition($newPosition);
+
         $gameState->entities = $gameState->entities->updateEntity($updatedPirate);
     }
 }

@@ -38,6 +38,6 @@ readonly class CellPosition implements \Stringable, Arrayable
 
     public function __toString(): string
     {
-        return "{$this->col} {$this->row}";
+        return "{$this->col}:{$this->row}";
     }
 }

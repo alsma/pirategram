@@ -117,31 +117,49 @@ class ClassicGameManager implements GameTypeManager
         $prevPosition = $updatedEntity->position;
 
         $iterations = 0;
+        $finishTurn = true;
 
         do {
+            // Detects deadlock and according to rules kill entity (it may happen only with pirates)
             if ($iterations > self::MAX_RECURSIVE_TURNS) {
                 $updatedEntity = $entity->kill();
-                $gameState->entities = $gameState->entities->updateEntities(collect([$updatedEntity]));
+                $gameState->entities = $gameState->entities->updateEntity($updatedEntity);
 
-                return;
+                break;
             }
 
-            $this->getEntityBehavior($entity->type)->move($gameState, $updatedEntity, $positionToMove);
-            $updatedEntity = $gameState->entities->getEntityByIdOrFail($updatedEntity->id);
+            // Update entity position and trigger related
+            // actions such as pirates attack or move of ship with all pirates on board
+            $entityBehavior = $this->getEntityBehavior($entity->type);
+            $entityBehavior->move($gameState, $updatedEntity, $positionToMove);
 
+            // Get target cell
             $cell = $gameState->board->getCell($positionToMove);
 
+            // Retrieve updated entity by entity behavior
+            // Store it's new position for recursive turns which depends on movement vector
+            $updatedEntity = $gameState->entities->getEntityByIdOrFail($updatedEntity->id);
             $positionBeforeCellEnter = $updatedEntity->position;
-            $this->getCellBehavior($cell->type)->onEnter($gameState, $updatedEntity, $prevPosition, $cell, $positionToMove);
-            $updatedEntity = $gameState->entities->getEntityByIdOrFail($entity->id);
 
+            // Handle cell behavior, entity position may be updated inside, so that's why we use loop
+            $cellBehavior = $this->getCellBehavior($cell->type);
+            $cellBehavior->onEnter($gameState, $updatedEntity, $prevPosition, $cell, $positionToMove);
+            $finishTurn = $cellBehavior->allowsEntityToStay();
+
+            // Reveal cell
             $updatedCell = $gameState->board->getCell($positionToMove)->reveal();
             $gameState->board->setCell($positionToMove, $updatedCell);
 
             $prevPosition = $positionBeforeCellEnter;
+            // Retrieve updated entity by cell behavior and check whether next loop iteration needed
+            $updatedEntity = $gameState->entities->getEntityByIdOrFail($entity->id);
             $positionToMove = $updatedEntity->position;
             $iterations++;
         } while (!$positionBeforeCellEnter->is($positionToMove));
+
+        if ($finishTurn) {
+            $gameState->finalizeTurn();
+        }
     }
 
     private function getIslandCells(): array

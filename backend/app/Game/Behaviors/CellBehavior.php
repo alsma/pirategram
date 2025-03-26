@@ -12,4 +12,6 @@ use App\Game\Models\GameState;
 interface CellBehavior
 {
     public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void;
+
+    public function allowsEntityToStay(): bool;
 }

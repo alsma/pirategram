@@ -8,7 +8,7 @@ use App\Game\Data\CellPosition;
 use App\Game\Data\Entity;
 use App\Game\Models\GameState;
 
-class NullEntityBehavior implements EntityBehavior
+class NullEntityBehavior extends BaseEntityBehavior
 {
     public function move(GameState $game, Entity $entity, CellPosition $position): void {}
 }

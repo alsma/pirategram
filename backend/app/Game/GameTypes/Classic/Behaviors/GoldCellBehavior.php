@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Game\GameTypes\Classic\Behaviors;
 
 use App\Exceptions\RuntimeException;
-use App\Game\Behaviors\CellBehavior;
+use App\Game\Behaviors\BaseCellBehavior;
 use App\Game\Data\Cell;
 use App\Game\Data\CellPosition;
 use App\Game\Data\CellType;
@@ -14,7 +14,7 @@ use App\Game\Data\EntityType;
 use App\Game\Models\GameState;
 use Illuminate\Support\Collection;
 
-class GoldCellBehavior implements CellBehavior
+class GoldCellBehavior extends BaseCellBehavior
 {
     public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void
     {

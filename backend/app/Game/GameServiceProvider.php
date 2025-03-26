@@ -7,15 +7,16 @@ namespace App\Game;
 use App\Game\Data\CellType;
 use App\Game\Data\EntityType;
 use App\Game\Data\GameType;
-use App\Game\GameTypes\Classic\Behaviors\Arrow1CellBehavior;
 use App\Game\GameTypes\Classic\Behaviors\BalloonCellBehavior;
 use App\Game\GameTypes\Classic\Behaviors\CannonBarrelCellBehavior;
 use App\Game\GameTypes\Classic\Behaviors\CrocodileCellBehavior;
 use App\Game\GameTypes\Classic\Behaviors\GoldCellBehavior;
 use App\Game\GameTypes\Classic\Behaviors\IceCellBehavior;
+use App\Game\GameTypes\Classic\Behaviors\MultiDirectionArrowBehavior;
 use App\Game\GameTypes\Classic\Behaviors\OgreCellBehavior;
 use App\Game\GameTypes\Classic\Behaviors\PirateEntityBehavior;
 use App\Game\GameTypes\Classic\Behaviors\ShipEntityBehavior;
+use App\Game\GameTypes\Classic\Behaviors\SingleArrowCellBehavior;
 use App\Game\GameTypes\ClassicGameManager;
 use Illuminate\Support\ServiceProvider;
 
@@ -46,8 +47,14 @@ class GameServiceProvider extends ServiceProvider
             $instance->registerCellBehavior(CellType::Ogre, OgreCellBehavior::class);
             $instance->registerCellBehavior(CellType::Ice, IceCellBehavior::class);
             $instance->registerCellBehavior(CellType::CannonBarrel, CannonBarrelCellBehavior::class);
-            $instance->registerCellBehavior(CellType::Arrow1, Arrow1CellBehavior::class);
-            $instance->registerCellBehavior(CellType::Arrow1Diagonal, Arrow1CellBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow1, SingleArrowCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow1Diagonal, SingleArrowCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow2, MultiDirectionArrowBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow2Diagonal, MultiDirectionArrowBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow3, MultiDirectionArrowBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow3, MultiDirectionArrowBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow4, MultiDirectionArrowBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow4Diagonal, MultiDirectionArrowBehavior::class);
 
             return $instance;
         });

@@ -103,7 +103,7 @@ class GameManager
             $gameTypeManager = $this->getGameTypeManager($gameState->type);
             $gameTypeManager->processTurn($gameState, $entity, $position);
 
-            $gameState->finalizeTurn();
+            $gameState->save();
 
             return $gameState;
         });

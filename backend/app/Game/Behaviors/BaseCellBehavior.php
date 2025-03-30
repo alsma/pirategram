@@ -15,6 +15,11 @@ abstract class BaseCellBehavior implements CellBehavior
         return true;
     }
 
+    public function singleTimeUsage(): bool
+    {
+        return false;
+    }
+
     /** {@inheritDoc} */
     public function processPossibleTurns(Collection $possibleTurns, Entity $entity, Collection $entities, Context $context): Collection
     {

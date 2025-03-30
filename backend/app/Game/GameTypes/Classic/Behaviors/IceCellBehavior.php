@@ -8,6 +8,7 @@ use App\Game\Behaviors\BaseCellBehavior;
 use App\Game\Data\Cell;
 use App\Game\Data\CellPosition;
 use App\Game\Data\Entity;
+use App\Game\Data\EntityStateItem;
 use App\Game\Models\GameState;
 
 class IceCellBehavior extends BaseCellBehavior
@@ -17,7 +18,13 @@ class IceCellBehavior extends BaseCellBehavior
         $vector = $entity->position->difference($prevPosition);
         $newPosition = $entity->position->add($vector);
 
-        $updatedPirate = $entity->updatePosition($newPosition);
+        if ($gameState->board->hasCell($newPosition)) {
+            $updatedPirate = $entity->updatePosition($newPosition);
+        } else {
+            // handle knight x2 behavior
+            $updatedPirate = $entity->updateState->set(EntityStateItem::IsKilled->value, true);
+        }
+
         $gameState->entities = $gameState->entities->updateEntity($updatedPirate);
     }
 }

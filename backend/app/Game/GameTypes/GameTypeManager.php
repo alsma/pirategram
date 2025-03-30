@@ -17,7 +17,7 @@ interface GameTypeManager
 
     public function generateEntities(Collection $players): Collection;
 
-    public function getAllowedTurns(GameBoard $gameBoard, Collection $entities, GamePlayer $turnPlayer): Collection;
+    public function getAllowedTurns(GameState $gameState, GamePlayer $turnPlayer): Collection;
 
     public function processTurn(GameState $gameState, Entity $entity, CellPosition $position): void;
 }

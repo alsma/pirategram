@@ -7,16 +7,7 @@ namespace App\Game;
 use App\Game\Data\CellType;
 use App\Game\Data\EntityType;
 use App\Game\Data\GameType;
-use App\Game\GameTypes\Classic\Behaviors\BalloonCellBehavior;
-use App\Game\GameTypes\Classic\Behaviors\CannonBarrelCellBehavior;
-use App\Game\GameTypes\Classic\Behaviors\CrocodileCellBehavior;
-use App\Game\GameTypes\Classic\Behaviors\GoldCellBehavior;
-use App\Game\GameTypes\Classic\Behaviors\IceCellBehavior;
-use App\Game\GameTypes\Classic\Behaviors\MultiDirectionArrowBehavior;
-use App\Game\GameTypes\Classic\Behaviors\OgreCellBehavior;
-use App\Game\GameTypes\Classic\Behaviors\PirateEntityBehavior;
-use App\Game\GameTypes\Classic\Behaviors\ShipEntityBehavior;
-use App\Game\GameTypes\Classic\Behaviors\SingleArrowCellBehavior;
+use App\Game\GameTypes\Classic\Behaviors as ClassicBehaviors;
 use App\Game\GameTypes\ClassicGameManager;
 use Illuminate\Support\ServiceProvider;
 
@@ -32,29 +23,43 @@ class GameServiceProvider extends ServiceProvider
             return $instance;
         });
 
+        $this->registerClassGameServices();
+    }
+
+    private function registerClassGameServices(): void
+    {
         $this->app->singleton(ClassicGameManager::class, function () {
             $instance = new ClassicGameManager;
             $instance->setBehaviorResolver(fn (string $className) => $this->app->make($className));
-            $instance->registerEntityBehavior(EntityType::Ship, ShipEntityBehavior::class);
-            $instance->registerEntityBehavior(EntityType::Pirate, PirateEntityBehavior::class);
-            $instance->registerCellBehavior(CellType::Gold1, GoldCellBehavior::class);
-            $instance->registerCellBehavior(CellType::Gold2, GoldCellBehavior::class);
-            $instance->registerCellBehavior(CellType::Gold3, GoldCellBehavior::class);
-            $instance->registerCellBehavior(CellType::Gold4, GoldCellBehavior::class);
-            $instance->registerCellBehavior(CellType::Gold5, GoldCellBehavior::class);
-            $instance->registerCellBehavior(CellType::Crocodile, CrocodileCellBehavior::class);
-            $instance->registerCellBehavior(CellType::Balloon, BalloonCellBehavior::class);
-            $instance->registerCellBehavior(CellType::Ogre, OgreCellBehavior::class);
-            $instance->registerCellBehavior(CellType::Ice, IceCellBehavior::class);
-            $instance->registerCellBehavior(CellType::CannonBarrel, CannonBarrelCellBehavior::class);
-            $instance->registerCellBehavior(CellType::Arrow1, SingleArrowCellBehavior::class);
-            $instance->registerCellBehavior(CellType::Arrow1Diagonal, SingleArrowCellBehavior::class);
-            $instance->registerCellBehavior(CellType::Arrow2, MultiDirectionArrowBehavior::class);
-            $instance->registerCellBehavior(CellType::Arrow2Diagonal, MultiDirectionArrowBehavior::class);
-            $instance->registerCellBehavior(CellType::Arrow3, MultiDirectionArrowBehavior::class);
-            $instance->registerCellBehavior(CellType::Arrow3, MultiDirectionArrowBehavior::class);
-            $instance->registerCellBehavior(CellType::Arrow4, MultiDirectionArrowBehavior::class);
-            $instance->registerCellBehavior(CellType::Arrow4Diagonal, MultiDirectionArrowBehavior::class);
+            $instance->registerEntityBehavior(EntityType::Ship, ClassicBehaviors\ShipEntityBehavior::class);
+            $instance->registerEntityBehavior(EntityType::Pirate, ClassicBehaviors\PirateEntityBehavior::class);
+            $instance->registerCellBehavior(CellType::Gold1, ClassicBehaviors\GoldCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Gold2, ClassicBehaviors\GoldCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Gold3, ClassicBehaviors\GoldCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Gold4, ClassicBehaviors\GoldCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Gold5, ClassicBehaviors\GoldCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Crocodile, ClassicBehaviors\CrocodileCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Balloon, ClassicBehaviors\BalloonCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Ogre, ClassicBehaviors\OgreCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Ice, ClassicBehaviors\IceCellBehavior::class);
+            $instance->registerCellBehavior(CellType::CannonBarrel, ClassicBehaviors\CannonBarrelCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow1, ClassicBehaviors\SingleArrowCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow1Diagonal, ClassicBehaviors\SingleArrowCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow2, ClassicBehaviors\MultiDirectionArrowBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow2Diagonal, ClassicBehaviors\MultiDirectionArrowBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow3, ClassicBehaviors\MultiDirectionArrowBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow4, ClassicBehaviors\MultiDirectionArrowBehavior::class);
+            $instance->registerCellBehavior(CellType::Arrow4Diagonal, ClassicBehaviors\MultiDirectionArrowBehavior::class);
+            $instance->registerCellBehavior(CellType::Plane, ClassicBehaviors\PlaneCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Knight, ClassicBehaviors\KnightCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Barrel, ClassicBehaviors\BarrelCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Labyrinth2, ClassicBehaviors\LabyrinthCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Labyrinth3, ClassicBehaviors\LabyrinthCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Labyrinth4, ClassicBehaviors\LabyrinthCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Labyrinth5, ClassicBehaviors\LabyrinthCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Trap, ClassicBehaviors\TrapCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Fortress, ClassicBehaviors\FortressCellBehavior::class);
+            $instance->registerCellBehavior(CellType::ReviveFortress, ClassicBehaviors\FortressReviveCellBehavior::class);
 
             return $instance;
         });

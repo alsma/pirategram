@@ -47,7 +47,7 @@ class MultiDirectionArrowBehavior extends BaseCellBehavior
         $baseVectors = match ($cell->type) {
             CellType::Arrow2 => collect([new Vector(-1, 0), new Vector(1, 0)]),
             CellType::Arrow2Diagonal => collect([new Vector(1, -1), new Vector(-1, 1)]),
-            CellType::Arrow3 => collect([new Vector(-1, -1), new Vector(1, 0), new Vector(1, 1)]),
+            CellType::Arrow3 => collect([new Vector(-1, -1), new Vector(1, 0), new Vector(0, 1)]),
             CellType::Arrow4 => collect([new Vector(0, -1), new Vector(1, 0), new Vector(0, 1), new Vector(-1, 0)]),
             CellType::Arrow4Diagonal => collect([new Vector(-1, -1), new Vector(1, -1), new Vector(1, 1), new Vector(-1, 1)]),
             default => throw new RuntimeException("Unexpected cell type '{$cell->type->value}'.")

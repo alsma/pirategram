@@ -113,6 +113,6 @@ class GameManager
     {
         $gameTypeManager = $this->getGameTypeManager($gameState->type);
 
-        return $gameTypeManager->getAllowedTurns($gameState->board, $gameState->entities, $gameState->currentTurn);
+        return $gameTypeManager->getAllowedTurns($gameState, $gameState->currentTurn);
     }
 }

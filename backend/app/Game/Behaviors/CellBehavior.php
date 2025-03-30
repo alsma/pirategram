@@ -18,7 +18,12 @@ interface CellBehavior
 
     public function allowsEntityToStay(): bool;
 
+    public function singleTimeUsage(): bool;
+
     /**
+     * This method should filter possible entity turns or return new set of possible turns according to rules
+     * It should not produce any side effects (such as entity modification etc.)
+     *
      * @param  Collection<int, EntityTurn>  $possibleTurns
      * @param  Collection<int, Entity>  $entities
      * @return Collection<int, EntityTurn>

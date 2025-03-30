@@ -13,7 +13,7 @@ use Illuminate\Support\Collection;
 
 interface EntityBehavior
 {
-    public function move(GameState $game, Entity $entity, CellPosition $position): void;
+    public function move(GameState $gameState, Entity $entity, CellPosition $position): void;
 
     /**
      * @param  Collection<int, EntityTurn>  $possibleTurns

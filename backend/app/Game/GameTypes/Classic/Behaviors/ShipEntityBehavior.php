@@ -10,6 +10,7 @@ use App\Game\Data\CellPositionSet;
 use App\Game\Data\CellType;
 use App\Game\Data\Context;
 use App\Game\Data\Entity;
+use App\Game\Data\EntityStateItem;
 use App\Game\Data\EntityTurn;
 use App\Game\Data\EntityType;
 use App\Game\Models\GameState;
@@ -17,13 +18,13 @@ use Illuminate\Support\Collection;
 
 class ShipEntityBehavior extends BaseEntityBehavior
 {
-    public function move(GameState $game, Entity $entity, CellPosition $position): void
+    public function move(GameState $gameState, Entity $entity, CellPosition $position): void
     {
-        $teammatePlayerIds = $game->players
-            ->where('team_id', $game->players->where('id', $entity->gamePlayerId)->firstOrFail()->team_id)
+        $teammatePlayerIds = $gameState->players
+            ->where('team_id', $gameState->players->where('id', $entity->gamePlayerId)->firstOrFail()->team_id)
             ->pluck('id', 'id');
 
-        $updatePiratesOnShip = $game->entities
+        $updatePiratesOnShip = $gameState->entities
             ->filter(fn (Entity $e) => $e->type === EntityType::Pirate
                 && $teammatePlayerIds->has($e->gamePlayerId)
                 && $e->position->is($entity->position))
@@ -31,18 +32,18 @@ class ShipEntityBehavior extends BaseEntityBehavior
 
         $updatedShip = $entity->updatePosition($position);
 
-        $killedEnemies = $game->entities
+        $killedEnemies = $gameState->entities
             ->filter(fn (Entity $e) => $e->type === EntityType::Pirate
                 && !$teammatePlayerIds->has($e->gamePlayerId)
                 && $e->position->is($position))
-            ->map->kill();
+            ->map(fn (Entity $e) => $e->updateState($entity->state->set(EntityStateItem::IsKilled->value, true)));
 
         $updatedEntities = collect()
             ->merge($updatePiratesOnShip)
             ->push($updatedShip)
             ->merge($killedEnemies);
 
-        $game->entities = $game->entities->updateEntities($updatedEntities);
+        $gameState->entities = $gameState->entities->updateEntities($updatedEntities);
     }
 
     /** {@inheritDoc} */

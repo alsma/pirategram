@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Game\GameTypes;
 
 use App\Exceptions\RuntimeException;
+use App\Game\Behaviors\TurnAllowerCellBehavior;
+use App\Game\Behaviors\TurnOverHandlerCellBehavior;
 use App\Game\Data\CellPosition;
 use App\Game\Data\Context;
 use App\Game\Data\Entity;
+use App\Game\Data\EntityStateItem;
 use App\Game\Data\EntityTurn;
 use App\Game\Data\EntityType;
 use App\Game\Data\GameBoard;
@@ -68,12 +71,13 @@ class ClassicGameManager implements GameTypeManager
         return $entities;
     }
 
-    public function getAllowedTurns(GameBoard $gameBoard, Collection $entities, GamePlayer $turnPlayer): Collection
+    public function getAllowedTurns(GameState $gameState, GamePlayer $turnPlayer): Collection
     {
-        $boardGenerator = $this->getBoardGenerator();
-        $turnContextData = $boardGenerator->getTurnContextData();
+        $gameBoard = $gameState->board;
+        $entities = $gameState->entities;
 
-        $playerEntities = $entities->where('gamePlayerId', $turnPlayer->id);
+        $playerEntities = $entities->where('gamePlayerId', $turnPlayer->id)
+            ->reject(fn (Entity $e) => $e->state->bool(EntityStateItem::IsKilled->value));
 
         $enforcedTurnsEntityByIds = $playerEntities->reject(function (Entity $entity) use ($gameBoard) {
             $currentCell = $gameBoard->getCell($entity->position);
@@ -81,6 +85,13 @@ class ClassicGameManager implements GameTypeManager
 
             return $cellBehavior->allowsEntityToStay();
         })->keyBy->id;
+
+        $teammatePlayerIds = $gameState->players
+            ->where('team_id', $turnPlayer->team_id)
+            ->pluck('id', 'id');
+
+        $boardGenerator = $this->getBoardGenerator();
+        $turnContextData = array_merge($boardGenerator->getTurnContextData(), compact('gameBoard', 'teammatePlayerIds'));
 
         return $playerEntities
             ->when($enforcedTurnsEntityByIds->isNotEmpty())->filter(fn (Entity $entity) => $enforcedTurnsEntityByIds->has($entity->id))
@@ -103,7 +114,17 @@ class ClassicGameManager implements GameTypeManager
                     })
                     ->filter()
                     ->pipe(fn (Collection $possibleTurns) => $entityBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext))
-                    ->pipe(fn (Collection $possibleTurns) => $cellBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext));
+                    ->pipe(fn (Collection $possibleTurns) => $cellBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext))
+                    ->pipe(fn (Collection $possibleTurns) => $possibleTurns->filter(function (EntityTurn $entityTurn) use ($entity, $entities, $turnContext) {
+                        if (!$this->isCellBehaviorContract($entityTurn->cell->type, TurnAllowerCellBehavior::class)) {
+                            return true;
+                        }
+
+                        /** @var TurnAllowerCellBehavior $cellBehavior */
+                        $cellBehavior = $this->getCellBehavior($entityTurn->cell->type);
+
+                        return $cellBehavior->allowsTurn($entityTurn, $entity, $entities, $turnContext);
+                    }));
             })
             ->flatten();
     }
@@ -115,15 +136,23 @@ class ClassicGameManager implements GameTypeManager
         $prevPosition = $updatedEntity->position;
 
         $iterations = 0;
-        $finishTurn = true;
+        $finalizeTurn = true;
 
         do {
             // Detects deadlock and according to rules kill entity (it may happen only with pirates)
             if ($iterations > self::MAX_RECURSIVE_TURNS) {
-                $updatedEntity = $entity->kill();
+                $updatedEntity = $entity->updateState($entity->state->set(EntityStateItem::IsKilled->value, true));
                 $gameState->entities = $gameState->entities->updateEntity($updatedEntity);
 
                 break;
+            }
+
+            // Handle single usage cells on leave
+            $prevCell = $gameState->board->getCell($entity->position);
+            $prevCellBehavior = $this->getCellBehavior($prevCell->type);
+            if ($prevCellBehavior->singleTimeUsage()) {
+                $newCell = $this->getBoardGenerator()->createCellToReplaceSingleTimeUsageCells();
+                $gameState->board->setCell($entity->position, $newCell);
             }
 
             // Update entity position and trigger related
@@ -142,7 +171,7 @@ class ClassicGameManager implements GameTypeManager
             // Handle cell behavior, entity position may be updated inside, so that's why we use loop
             $cellBehavior = $this->getCellBehavior($cell->type);
             $cellBehavior->onEnter($gameState, $updatedEntity, $prevPosition, $cell, $positionToMove);
-            $finishTurn = $cellBehavior->allowsEntityToStay();
+            $finalizeTurn = $cellBehavior->allowsEntityToStay();
 
             // Reveal cell
             $updatedCell = $gameState->board->getCell($positionToMove)->reveal();
@@ -155,7 +184,18 @@ class ClassicGameManager implements GameTypeManager
             $iterations++;
         } while (!$positionBeforeCellEnter->is($positionToMove));
 
-        if ($finishTurn) {
+        $gameState->entities->where('gamePlayerId', $entity->gamePlayerId)
+            ->reject(fn (Entity $e) => $e->state->bool(EntityStateItem::IsKilled->value))
+            ->where('id', '!==', $entity->id)
+            ->each(function (Entity $e) use ($gameState) {
+                $cell = $gameState->board->getCell($e->position);
+                $cellBehavior = $this->getCellBehavior($cell->type);
+                if ($cellBehavior instanceof TurnOverHandlerCellBehavior) {
+                    $cellBehavior->onPlayerTurnOver($gameState, $e, $cell, $e->position);
+                }
+            });
+
+        if ($finalizeTurn) {
             $gameState->finalizeTurn();
         }
     }

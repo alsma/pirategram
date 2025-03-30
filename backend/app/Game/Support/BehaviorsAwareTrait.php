@@ -43,18 +43,18 @@ trait BehaviorsAwareTrait
         $this->behaviorResolver = $resolver;
     }
 
-    public function getCellBehavior(CellType $cellType): CellBehavior
+    private function getCellBehavior(CellType $cellType): CellBehavior
     {
         if (!$this->behaviorResolver) {
             throw new RuntimeException('No behavior resolver available.');
         }
 
-        $behavior = $this->cellBehaviors[$cellType->value] ?? NullCellBehavior::class;
+        $behavior = $this->getCellBehaviorClassName($cellType);
 
         return call_user_func($this->behaviorResolver, $behavior);
     }
 
-    public function getEntityBehavior(EntityType $entityType): EntityBehavior
+    private function getEntityBehavior(EntityType $entityType): EntityBehavior
     {
         if (!$this->behaviorResolver) {
             throw new RuntimeException('No behavior resolver available.');
@@ -63,5 +63,15 @@ trait BehaviorsAwareTrait
         $behavior = $this->entityBehaviors[$entityType->value] ?? NullEntityBehavior::class;
 
         return call_user_func($this->behaviorResolver, $behavior);
+    }
+
+    private function getCellBehaviorClassName(CellType $cellType): mixed
+    {
+        return $this->cellBehaviors[$cellType->value] ?? NullCellBehavior::class;
+    }
+
+    private function isCellBehaviorContract(CellType $cellType, string $contract): bool
+    {
+        return is_a($this->getCellBehaviorClassName($cellType), $contract, true);
     }
 }

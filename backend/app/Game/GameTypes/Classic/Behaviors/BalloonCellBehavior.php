@@ -21,7 +21,6 @@ class BalloonCellBehavior extends BaseCellBehavior
                 && $e->gamePlayerId === $entity->gamePlayerId);
 
         $updatedPirate = $entity->updatePosition($shipEntity->position);
-
         $gameState->entities = $gameState->entities->updateEntity($updatedPirate);
     }
 }

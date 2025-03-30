@@ -12,6 +12,9 @@ class CellResource extends JsonResource
 {
     public function toArray($request): array
     {
+        // Uncomment to see the map
+        // $this->resource = $this->resource->reveal();
+
         return [
             $this->mergeWhen($this->resource->revealed, fn () => [
                 'type' => $this->resource->type,

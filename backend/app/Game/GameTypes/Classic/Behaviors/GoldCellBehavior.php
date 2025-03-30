@@ -28,7 +28,7 @@ class GoldCellBehavior extends BaseCellBehavior
             CellType::Gold3 => 3,
             CellType::Gold4 => 4,
             CellType::Gold5 => 5,
-            default => throw new RuntimeException('Unexpected cell type.')
+            default => throw new RuntimeException("Unexpected cell type '{$cell->type->value}'.")
         };
 
         $coins = Collection::range(1, $coinsCnt)

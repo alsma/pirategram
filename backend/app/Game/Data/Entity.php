@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace App\Game\Data;
 
+use App\Exceptions\RuntimeException;
+use App\Game\Support\HighOrderEntityStateUpdater;
 use Illuminate\Contracts\Support\Arrayable;
 
+/**
+ * @property-read HighOrderEntityStateUpdater $updateState
+ */
 readonly class Entity implements Arrayable
 {
     public string $id;
@@ -14,7 +19,7 @@ readonly class Entity implements Arrayable
         public EntityType $type,
         public CellPosition $position,
         public ?int $gamePlayerId = null,
-        public ?bool $isKilled = null,
+        public EntityState $state = new EntityState,
         ?string $id = null,
     ) {
         $this->id = $id ?? $type->value.':'.str_random(6);
@@ -26,7 +31,7 @@ readonly class Entity implements Arrayable
             EntityType::from($data['type']),
             new CellPosition($data['col'], $data['row']),
             $data['game_player_id'] ?? null,
-            $data['is_killed'] ?? null,
+            new EntityState($data['state'] ?? []),
             $data['id'] ?? null,
         );
     }
@@ -37,7 +42,7 @@ readonly class Entity implements Arrayable
             'id' => $this->id,
             'type' => $this->type->value,
             'game_player_id' => $this->gamePlayerId,
-            'is_killed' => $this->isKilled,
+            'state' => $this->state->toArray(),
             'col' => $this->position->col,
             'row' => $this->position->row,
         ];
@@ -48,13 +53,27 @@ readonly class Entity implements Arrayable
         return $this->id === $entity->id;
     }
 
-    public function updatePosition(CellPosition $position): self
+    public function isNot(Entity $entity): bool
     {
-        return new self($this->type, $position, $this->gamePlayerId, $this->isKilled, $this->id);
+        return !$this->is($entity);
     }
 
-    public function kill(): self
+    public function updatePosition(CellPosition $position): self
     {
-        return new self($this->type, $this->position, $this->gamePlayerId, true, $this->id);
+        return new self($this->type, $position, $this->gamePlayerId, $this->state, $this->id);
+    }
+
+    public function updateState(EntityState $state): self
+    {
+        return new self($this->type, $this->position, $this->gamePlayerId, $state, $this->id);
+    }
+
+    public function __get(string $key): mixed
+    {
+        if ($key === 'updateState') {
+            return new HighOrderEntityStateUpdater($this);
+        }
+
+        throw new RuntimeException("Property [{$key}] does not exist on this instance.");
     }
 }

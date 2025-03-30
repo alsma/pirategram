@@ -41,6 +41,11 @@ class BoardGenerator
         ];
     }
 
+    public function createCellToReplaceSingleTimeUsageCells(): Cell
+    {
+        return new Cell(CellType::Terrain, true);
+    }
+
     private function getIslandCells(): array
     {
         $result = collect();

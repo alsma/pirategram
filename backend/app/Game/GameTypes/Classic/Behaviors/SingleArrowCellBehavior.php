@@ -23,7 +23,7 @@ class SingleArrowCellBehavior extends BaseCellBehavior
         $baseVector = match ($cell->type) {
             CellType::Arrow1 => new Vector(0, -1),
             CellType::Arrow1Diagonal => new Vector(1, -1),
-            default => throw new RuntimeException('Unexpected cell type.')
+            default => throw new RuntimeException("Unexpected cell type '{$cell->type->value}'.")
         };
 
         $vector = $this->rotateVector($cell->direction, $baseVector);

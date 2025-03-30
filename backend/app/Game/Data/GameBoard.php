@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace App\Game\Data;
 
 use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Support\Collection;
 
 class GameBoard implements Arrayable
 {
-    public array $cells;
+    public array $cells; // TODO add private(set)
 
     public function __construct(
         public readonly int $rows,
@@ -54,6 +55,21 @@ class GameBoard implements Arrayable
                 break 2;
             }
         }
+    }
+
+    public function mapCells(callable $callback): Collection
+    {
+        return collect($this->cells)
+            ->flatMap(fn ($row, $rowIndex) => collect($row)
+                ->map(function (?Cell $cell, $colIndex) use ($callback, $rowIndex) {
+                    if (!$cell) {
+                        return null;
+                    }
+
+                    return $callback($cell, new CellPosition($colIndex, $rowIndex));
+                }))
+            ->filter()
+            ->values();
     }
 
     public function toArray(): array

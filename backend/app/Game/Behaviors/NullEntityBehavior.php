@@ -10,5 +10,5 @@ use App\Game\Models\GameState;
 
 class NullEntityBehavior extends BaseEntityBehavior
 {
-    public function move(GameState $game, Entity $entity, CellPosition $position): void {}
+    public function move(GameState $gameState, Entity $entity, CellPosition $position): void {}
 }

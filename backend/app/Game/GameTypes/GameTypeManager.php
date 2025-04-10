@@ -19,5 +19,5 @@ interface GameTypeManager
 
     public function getAllowedTurns(GameState $gameState, GamePlayer $turnPlayer): Collection;
 
-    public function processTurn(GameState $gameState, Entity $entity, CellPosition $position): void;
+    public function processTurn(GameState $gameState, Entity $entity, CellPosition $position, array $params): void;
 }

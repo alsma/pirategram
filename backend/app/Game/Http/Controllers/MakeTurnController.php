@@ -16,7 +16,8 @@ class MakeTurnController
             $request->getGame(),
             $request->user(),
             $request->getEntityId(),
-            $request->getPosition()
+            $request->getPosition(),
+            $request->getParams(),
         );
 
         return GameStateResource::make($gameState)->withAllowedTurns();

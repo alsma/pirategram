@@ -23,11 +23,6 @@ class MultiDirectionArrowBehavior extends BaseCellBehavior
 
     public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void {}
 
-    public function allowsEntityToStay(): bool
-    {
-        return false;
-    }
-
     public function processPossibleTurns(Collection $possibleTurns, Entity $entity, Collection $entities, Context $context): Collection
     {
         $possibleTurns = parent::processPossibleTurns($possibleTurns, $entity, $entities, $context);
@@ -54,5 +49,10 @@ class MultiDirectionArrowBehavior extends BaseCellBehavior
         };
 
         return $this->rotateVectors($cell->direction ?? 0, $baseVectors);
+    }
+
+    public function allowsEntityToStay(): bool
+    {
+        return false;
     }
 }

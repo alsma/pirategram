@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Game\GameTypes;
 
+use App\Exceptions\LocalizedException;
 use App\Exceptions\RuntimeException;
 use App\Game\Behaviors\TurnAllowerCellBehavior;
 use App\Game\Behaviors\TurnOverHandlerCellBehavior;
@@ -77,7 +78,7 @@ class ClassicGameManager implements GameTypeManager
         $entities = $gameState->entities;
 
         $playerEntities = $entities->where('gamePlayerId', $turnPlayer->id)
-            ->reject(fn (Entity $e) => $e->state->bool(EntityStateItem::IsKilled->value));
+            ->reject(fn(Entity $e) => $e->state->bool(EntityStateItem::IsKilled->value));
 
         $enforcedTurnsEntityByIds = $playerEntities->reject(function (Entity $entity) use ($gameBoard) {
             $currentCell = $gameBoard->getCell($entity->position);
@@ -94,7 +95,7 @@ class ClassicGameManager implements GameTypeManager
         $turnContextData = array_merge($boardGenerator->getTurnContextData(), compact('gameBoard', 'teammatePlayerIds'));
 
         return $playerEntities
-            ->when($enforcedTurnsEntityByIds->isNotEmpty())->filter(fn (Entity $entity) => $enforcedTurnsEntityByIds->has($entity->id))
+            ->when($enforcedTurnsEntityByIds->isNotEmpty())->filter(fn(Entity $entity) => $enforcedTurnsEntityByIds->has($entity->id))
             ->map(function (Entity $entity) use ($gameBoard, $entities, $turnContextData) {
                 $currentCell = $gameBoard->getCell($entity->position);
                 $turnContext = new Context(array_merge($turnContextData, compact('currentCell')));
@@ -113,9 +114,9 @@ class ClassicGameManager implements GameTypeManager
                         return new EntityTurn($entity->id, $cell, $position);
                     })
                     ->filter()
-                    ->pipe(fn (Collection $possibleTurns) => $entityBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext))
-                    ->pipe(fn (Collection $possibleTurns) => $cellBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext))
-                    ->pipe(fn (Collection $possibleTurns) => $possibleTurns->filter(function (EntityTurn $entityTurn) use ($entity, $entities, $turnContext) {
+                    ->pipe(fn(Collection $possibleTurns) => $entityBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext))
+                    ->pipe(fn(Collection $possibleTurns) => $cellBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext))
+                    ->pipe(fn(Collection $possibleTurns) => $possibleTurns->filter(function (EntityTurn $entityTurn) use ($entity, $entities, $turnContext) {
                         if (!$this->isCellBehaviorContract($entityTurn->cell->type, TurnAllowerCellBehavior::class)) {
                             return true;
                         }
@@ -129,7 +130,7 @@ class ClassicGameManager implements GameTypeManager
             ->flatten();
     }
 
-    public function processTurn(GameState $gameState, Entity $entity, CellPosition $position): void
+    public function processTurn(GameState $gameState, Entity $entity, CellPosition $position, array $params): void
     {
         $positionToMove = $position;
         $updatedEntity = $entity;
@@ -138,22 +139,29 @@ class ClassicGameManager implements GameTypeManager
         $iterations = 0;
         $finalizeTurn = true;
 
+        $carriageEntity = $this->extractCarriageEntity($gameState, $entity, $params);
+
         do {
             // Detects deadlock and according to rules kill entity (it may happen only with pirates)
             if ($iterations > self::MAX_RECURSIVE_TURNS) {
-                $updatedEntity = $entity->updateState($entity->state->set(EntityStateItem::IsKilled->value, true));
+                $updatedEntity = $entity->updateState->set(EntityStateItem::IsKilled->value, true);
                 $gameState->entities = $gameState->entities->updateEntity($updatedEntity);
+
+                // if deadlock detected and pirate died, return coin to position before turn
+                if ($carriageEntity) {
+                    $updatedCarriageEntity = $carriageEntity->updatePosition($prevPosition);
+                    $gameState->entities = $gameState->entities->updateEntity($updatedCarriageEntity);
+                }
 
                 break;
             }
 
-            // Handle single usage cells on leave
-            $prevCell = $gameState->board->getCell($entity->position);
+            $prevCell = $gameState->board->getCell($prevPosition);
             $prevCellBehavior = $this->getCellBehavior($prevCell->type);
-            if ($prevCellBehavior->singleTimeUsage()) {
-                $newCell = $this->getBoardGenerator()->createCellToReplaceSingleTimeUsageCells();
-                $gameState->board->setCell($entity->position, $newCell);
-            }
+            $prevCellBehavior->onLeave($gameState, $updatedEntity, $prevPosition, $prevCell, $positionToMove);
+            // Retrieve updated entity by entity behavior
+            // TODO we can't take updated position here as it breaks some cell behaviors like ice/crocodile
+            $updatedEntity = $gameState->entities->getEntityByIdOrFail($updatedEntity->id);
 
             // Update entity position and trigger related
             // actions such as pirates attack or move of ship with all pirates on board
@@ -182,15 +190,27 @@ class ClassicGameManager implements GameTypeManager
             $updatedEntity = $gameState->entities->getEntityByIdOrFail($entity->id);
             $positionToMove = $updatedEntity->position;
             $iterations++;
-        } while (!$positionBeforeCellEnter->is($positionToMove));
+        } while ($positionBeforeCellEnter->isNot($positionToMove));
 
-        $gameState->entities->where('gamePlayerId', $entity->gamePlayerId)
-            ->reject(fn (Entity $e) => $e->state->bool(EntityStateItem::IsKilled->value))
-            ->where('id', '!==', $entity->id)
-            ->each(function (Entity $e) use ($gameState) {
+        if ($carriageEntity) {
+            $updatedCarriageEntity = $carriageEntity->updatePosition($updatedEntity->position);
+            $gameState->entities = $gameState->entities->updateEntity($updatedCarriageEntity);
+        }
+
+        $gameState->entities
+            ->each(function (Entity $e) use ($gameState, $entity) {
+                if ($e->gamePlayerId !== $entity->gamePlayerId) {
+                    return;
+                } elseif ($e->id === $entity->id) {
+                    return;
+                } elseif ($e->state->bool(EntityStateItem::IsKilled->value)) {
+                    return;
+                }
+
                 $cell = $gameState->board->getCell($e->position);
-                $cellBehavior = $this->getCellBehavior($cell->type);
-                if ($cellBehavior instanceof TurnOverHandlerCellBehavior) {
+                if ($this->isCellBehaviorContract($cell->type, TurnOverHandlerCellBehavior::class)) {
+                    /** @var TurnOverHandlerCellBehavior $cellBehavior */
+                    $cellBehavior = $this->getCellBehavior($cell->type);
                     $cellBehavior->onPlayerTurnOver($gameState, $e, $cell, $e->position);
                 }
             });
@@ -203,5 +223,28 @@ class ClassicGameManager implements GameTypeManager
     public function getBoardGenerator(): BoardGenerator
     {
         return new BoardGenerator;
+    }
+
+    private function extractCarriageEntity(GameState $gameState, Entity $entity, array $params): ?Entity
+    {
+        $carriageEntityId = $params['carriageEntityId'] ?? null;
+        if (!$carriageEntityId) {
+            return null;
+        }
+
+        $carriageEntity = $gameState->entities->firstWhere('id', $carriageEntityId);
+        if (!$carriageEntity) {
+            throw new LocalizedException('game_carriage_entity_not_found');
+        }
+
+        if ($carriageEntity->type !== EntityType::Coin) {
+            throw new LocalizedException('game_carriage_entity_invalid');
+        }
+
+        if ($entity->position->isNot($carriageEntity->position)) {
+            throw new LocalizedException('game_carriage_entity_invalid');
+        }
+
+        return $carriageEntity;
     }
 }

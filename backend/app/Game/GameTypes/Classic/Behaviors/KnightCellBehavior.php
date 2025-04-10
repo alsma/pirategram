@@ -20,11 +20,6 @@ class KnightCellBehavior extends BaseCellBehavior
 {
     public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void {}
 
-    public function allowsEntityToStay(): bool
-    {
-        return false;
-    }
-
     public function processPossibleTurns(Collection $possibleTurns, Entity $entity, Collection $entities, Context $context): Collection
     {
         /** @var GameBoard $gameBoard */
@@ -56,5 +51,10 @@ class KnightCellBehavior extends BaseCellBehavior
         })->filter();
 
         return parent::processPossibleTurns($possibleTurns, $entity, $entities, $context);
+    }
+
+    public function allowsEntityToStay(): bool
+    {
+        return false;
     }
 }

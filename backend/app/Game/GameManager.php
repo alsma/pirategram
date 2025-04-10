@@ -71,9 +71,9 @@ class GameManager
         });
     }
 
-    public function makeTurn(GameState $gameState, User $user, string $entityId, CellPosition $position): GameState
+    public function makeTurn(GameState $gameState, User $user, string $entityId, CellPosition $position, array $params): GameState
     {
-        return transaction(function () use ($gameState, $user, $entityId, $position) {
+        return transaction(function () use ($gameState, $user, $entityId, $position, $params) {
             $gameState = GameState::query()->lockForUpdate()->findOrFail($gameState->id);
             // TODO check that user belongs to game
             if ($gameState->currentTurn->user->isNot($user)) {
@@ -101,7 +101,7 @@ class GameManager
             }
 
             $gameTypeManager = $this->getGameTypeManager($gameState->type);
-            $gameTypeManager->processTurn($gameState, $entity, $position);
+            $gameTypeManager->processTurn($gameState, $entity, $position, $params);
 
             $gameState->save();
 

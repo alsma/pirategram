@@ -6,7 +6,7 @@ namespace App\Game\Data;
 
 use Illuminate\Contracts\Support\Arrayable;
 
-class EntityState implements Arrayable
+readonly class EntityState implements Arrayable
 {
     public function __construct(
         private array $state = [],
@@ -14,7 +14,7 @@ class EntityState implements Arrayable
 
     public function set(string $key, mixed $value): self
     {
-        return new self(array_merge($this->state, [(string) $key => $value]));
+        return new self(array_merge($this->state, [$key => $value]));
     }
 
     public function increment(string $key, int $incrementBy = 1, int $default = 0): self

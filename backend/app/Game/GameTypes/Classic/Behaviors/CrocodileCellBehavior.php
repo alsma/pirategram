@@ -18,4 +18,9 @@ class CrocodileCellBehavior extends BaseCellBehavior
 
         $gameState->entities = $gameState->entities->updateEntity($updatedPirate);
     }
+
+    public function allowsEntityToStay(): bool
+    {
+        return false;
+    }
 }

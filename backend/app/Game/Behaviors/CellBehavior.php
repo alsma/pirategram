@@ -15,10 +15,9 @@ use Illuminate\Support\Collection;
 interface CellBehavior
 {
     public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void;
+    public function onLeave(GameState $gameState, Entity $entity, CellPosition $position, Cell $cell, CellPosition $newPosition): void;
 
     public function allowsEntityToStay(): bool;
-
-    public function singleTimeUsage(): bool;
 
     /**
      * This method should filter possible entity turns or return new set of possible turns according to rules

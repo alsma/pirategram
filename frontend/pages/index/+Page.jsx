@@ -34,6 +34,7 @@ const CoinPositionByCnt = {
 function Page() {
   const [gameState, setGameState] = useState()
   const [selectedEntity, setSelectedEntity] = useState()
+  const [selectedCarriageEntity, setSelectedCarriageEntity] = useState()
 
   const myPlayer = useMemo(() => {
     if (!gameState) {
@@ -126,6 +127,7 @@ function Page() {
       body: JSON.stringify({
         gameHash: gameState.hash,
         entityId: selectedEntity.id,
+        carriageEntityId: selectedCarriageEntity?.id,
         col,
         row,
       })
@@ -135,6 +137,10 @@ function Page() {
 
     setGameState(data)
     setSelectedEntity(null)
+
+    if (data.currentTurnPlayer.hash !== selectedEntity.playerHash) {
+      setSelectedCarriageEntity(null)
+    }
   }
 
   const handleEntityClick = async (entityId) => {
@@ -144,6 +150,9 @@ function Page() {
     }
 
     if (entity.playerHash !== myPlayer?.hash) {
+      if (selectedEntity && entity.type === EntityType.Coin && entity.col === selectedEntity.col && entity.row === selectedEntity.row) {
+        setSelectedCarriageEntity(setSelectedCarriageEntity?.id === entity.id ? null : entity)
+      }
       return
     }
 
@@ -161,16 +170,21 @@ function Page() {
   }
 
   const onCellClick = useCallback(async e => {
+    const entityId = e.target.dataset.entityId
+    const hasActiveTurn = e.target.dataset.activeTurn
+    if (entityId) {
+      if (hasActiveTurn && selectedEntity) {
+        return handleCellClick(selectedEntity, e.target.dataset.col, e.target.dataset.row)
+      }
+
+      return handleEntityClick(entityId)
+    }
+
     const isCell = e.target.dataset.col !== undefined && e.target.dataset.row !== undefined
     if (isCell) {
       return handleCellClick(selectedEntity, e.target.dataset.col, e.target.dataset.row)
     }
-
-    const entityId = e.target.dataset.entityId
-    if (entityId) {
-      return handleEntityClick(entityId)
-    }
-  }, [gameState, selectedEntity])
+  }, [gameState, selectedEntity, selectedCarriageEntity])
 
   return (
     <>
@@ -185,11 +199,10 @@ function Page() {
             {gameState.board.cells.map((rows, rowIdx) =>
               <tr key={`row-${rowIdx}`}>
                 {rows.map((cell, colIdx) => {
-                  const activeTurn = (selectedEntity &&
+                  const hasActiveTurn = selectedEntity &&
                     allowedTurnsByEntityId[selectedEntity.id] &&
                     allowedTurnsByEntityId[selectedEntity.id][getPositionKey(colIdx, rowIdx)]
-                  ) ? 'animate-pulse cursor-pointer'
-                    : ''
+                  const activeTurn = hasActiveTurn ? 'animate-pulse cursor-pointer' : ''
 
                   let img
                   if (cell.revealed) {
@@ -256,11 +269,12 @@ function Page() {
                       return
                     } else if (e.type === EntityType.Coin) {
                       const position = CoinPositionByCnt[coinCnt]
+                      const selectedCarriage = selectedCarriageEntity?.id === e.id ? 'animate-bounce' : ''
 
                       children.push(
                         <span
                           key={`entity:${e.id}`}
-                          className={`cursor-pointer h-3 w-3 rounded-full border-4 absolute z-20 bg-amber-600 border-amber-600 ${position}`}
+                          className={`cursor-pointer h-3 w-3 rounded-full border-4 absolute z-20 bg-amber-600 border-amber-600 ${position} ${selectedCarriage}`}
                           data-entity-id={e.id}
                         />
                       )
@@ -272,12 +286,15 @@ function Page() {
 
                     children.push(<img
                       key={`entity:${e.id}`}
-                      className={`absolute cursor-pointer z-10 top-0 left-0 ${availableForSelection} ${selected}`}
+                      className={`absolute cursor-pointer z-10 top-0 left-0 ${availableForSelection} ${selected} ${activeTurn}`}
                       width="50"
                       height="50"
                       src={`/images/${e.type}.png`}
                       alt={`${e.type}`}
                       data-entity-id={e.id}
+                      data-col={e.col}
+                      data-row={e.row}
+                      data-active-turn={!!hasTurns}
                     />)
                   })
 

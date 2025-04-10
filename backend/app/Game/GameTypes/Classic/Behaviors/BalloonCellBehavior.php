@@ -23,4 +23,9 @@ class BalloonCellBehavior extends BaseCellBehavior
         $updatedPirate = $entity->updatePosition($shipEntity->position);
         $gameState->entities = $gameState->entities->updateEntity($updatedPirate);
     }
+
+    public function allowsEntityToStay(): bool
+    {
+        return false;
+    }
 }

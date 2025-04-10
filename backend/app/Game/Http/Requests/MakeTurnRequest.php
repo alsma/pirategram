@@ -18,6 +18,7 @@ class MakeTurnRequest extends FormRequest
             'entityId' => 'required|string',
             'col' => 'nullable|numeric',
             'row' => 'nullable|numeric',
+            'carriageEntityId' => 'nullable|string',
         ];
     }
 
@@ -40,5 +41,12 @@ class MakeTurnRequest extends FormRequest
     public function getPosition(): CellPosition
     {
         return new CellPosition($this->integer('col'), $this->integer('row'));
+    }
+
+    public function getParams(): array
+    {
+        return array_filter([
+            'carriageEntityId' => $this->string('carriageEntityId')->toString(),
+        ], fn ($v) => (bool) $v);
     }
 }

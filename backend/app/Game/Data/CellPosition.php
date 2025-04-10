@@ -23,6 +23,11 @@ readonly class CellPosition implements \Stringable, Arrayable
         return $this->col === $position->col && $this->row === $position->row;
     }
 
+    public function isNot(CellPosition $position): bool
+    {
+        return $this->col !== $position->col || $this->row !== $position->row;
+    }
+
     public function difference(CellPosition $other): Vector
     {
         return new Vector($this->col - $other->col, $this->row - $other->row);

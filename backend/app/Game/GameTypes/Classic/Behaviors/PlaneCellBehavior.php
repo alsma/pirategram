@@ -19,6 +19,14 @@ class PlaneCellBehavior extends BaseCellBehavior
 {
     public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void {}
 
+    public function onLeave(GameState $gameState, Entity $entity, CellPosition $position, Cell $cell, CellPosition $newPosition): void
+    {
+        parent::onLeave($gameState, $entity, $position, $cell, $newPosition);
+
+        $newCell = new Cell(CellType::Terrain, true);
+        $gameState->board->setCell($entity->position, $newCell);
+    }
+
     public function processPossibleTurns(Collection $possibleTurns, Entity $entity, Collection $entities, Context $context): Collection
     {
         /** @var GameBoard $gameBoard */
@@ -39,10 +47,5 @@ class PlaneCellBehavior extends BaseCellBehavior
     public function allowsEntityToStay(): bool
     {
         return false;
-    }
-
-    public function singleTimeUsage(): bool
-    {
-        return true;
     }
 }

@@ -32,4 +32,9 @@ class CannonBarrelCellBehavior extends BaseCellBehavior
         $updatedPirate = $entity->updatePosition($newPosition);
         $gameState->entities = $gameState->entities->updateEntity($updatedPirate);
     }
+
+    public function allowsEntityToStay(): bool
+    {
+        return false;
+    }
 }

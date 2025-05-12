@@ -21,7 +21,7 @@ class GameState extends Model
 
     public function users(): HasManyThrough
     {
-        return $this->hasManyThrough(User::class, GamePlayer::class);
+        return $this->hasManyThrough(User::class, GamePlayer::class, secondKey: 'id', secondLocalKey: 'user_id');
     }
 
     public function players(): HasMany

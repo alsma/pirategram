@@ -16,6 +16,7 @@ class EntityTurnResource extends JsonResource
             'entityId' => $this->resource->entityId,
             'col' => $this->resource->position->col,
             'row' => $this->resource->position->row,
+            'canCarry' => $this->resource->canCarry,
         ];
     }
 }

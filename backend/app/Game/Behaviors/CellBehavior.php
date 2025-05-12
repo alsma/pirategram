@@ -15,6 +15,7 @@ use Illuminate\Support\Collection;
 interface CellBehavior
 {
     public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void;
+
     public function onLeave(GameState $gameState, Entity $entity, CellPosition $position, Cell $cell, CellPosition $newPosition): void;
 
     public function allowsEntityToStay(): bool;
@@ -28,4 +29,6 @@ interface CellBehavior
      * @return Collection<int, EntityTurn>
      */
     public function processPossibleTurns(Collection $possibleTurns, Entity $entity, Collection $entities, Context $context): Collection;
+
+    public function allowsEntityToBeCarriedTo(Entity $carrier, Entity $carriage, Cell $cell, CellPosition $cellPosition, Context $context): bool;
 }

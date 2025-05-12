@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Game\GameTypes\Classic\Behaviors;
 
 use App\Game\Behaviors\BaseCellBehavior;
+use App\Game\Commands\UpdatePositionCommand;
 use App\Game\Data\Cell;
 use App\Game\Data\CellPosition;
 use App\Game\Data\Entity;
@@ -20,8 +21,7 @@ class BalloonCellBehavior extends BaseCellBehavior
             ->firstOrFail(fn (Entity $e) => $e->type === EntityType::Ship
                 && $e->gamePlayerId === $entity->gamePlayerId);
 
-        $updatedPirate = $entity->updatePosition($shipEntity->position);
-        $gameState->entities = $gameState->entities->updateEntity($updatedPirate);
+        $gameState->applyCommand(new UpdatePositionCommand($entity->id, $shipEntity->position, __METHOD__));
     }
 
     public function allowsEntityToStay(): bool

@@ -113,8 +113,12 @@ function Page() {
       return
     }
 
-    const isAllowedTurn = allowedTurnsByEntityId[selectedEntity.id] && allowedTurnsByEntityId[selectedEntity.id][getPositionKey(col, row)]
-    if (!isAllowedTurn) {
+    let turn = allowedTurnsByEntityId[selectedEntity.id] && allowedTurnsByEntityId[selectedEntity.id][getPositionKey(col, row)]
+    if (turn && selectedCarriageEntity && !turn.canCarry.includes(selectedCarriageEntity.id)) {
+      turn = null
+    }
+
+    if (!turn) {
       return
     }
 
@@ -151,7 +155,7 @@ function Page() {
 
     if (entity.playerHash !== myPlayer?.hash) {
       if (selectedEntity && entity.type === EntityType.Coin && entity.col === selectedEntity.col && entity.row === selectedEntity.row) {
-        setSelectedCarriageEntity(setSelectedCarriageEntity?.id === entity.id ? null : entity)
+        setSelectedCarriageEntity(selectedCarriageEntity?.id === entity.id ? null : entity)
       }
       return
     }
@@ -199,10 +203,14 @@ function Page() {
             {gameState.board.cells.map((rows, rowIdx) =>
               <tr key={`row-${rowIdx}`}>
                 {rows.map((cell, colIdx) => {
-                  const hasActiveTurn = selectedEntity &&
+                  let cellTurn = selectedEntity &&
                     allowedTurnsByEntityId[selectedEntity.id] &&
                     allowedTurnsByEntityId[selectedEntity.id][getPositionKey(colIdx, rowIdx)]
-                  const activeTurn = hasActiveTurn ? 'animate-pulse cursor-pointer' : ''
+                  if (cellTurn && selectedCarriageEntity && !cellTurn.canCarry.includes(selectedCarriageEntity.id)) {
+                    cellTurn = null
+                  }
+
+                  const activeTurn = cellTurn ? 'animate-pulse cursor-pointer' : ''
 
                   let img
                   if (cell.revealed) {

@@ -10,5 +10,21 @@ readonly class EntityTurn
         public string $entityId,
         public Cell $cell,
         public CellPosition $position,
+        /** @var string[] */
+        public array $canCarry = [],
     ) {}
+
+    public function canCarry(string $entityId): bool
+    {
+        return in_array($entityId, $this->canCarry, true);
+    }
+
+    public function allowCarry(array|string $entityTypes): self
+    {
+        if (!is_array($entityTypes)) {
+            $entityTypes = [$entityTypes];
+        }
+
+        return new self($this->entityId, $this->cell, $this->position, array_unique(array_merge($this->canCarry, $entityTypes)));
+    }
 }

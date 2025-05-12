@@ -7,13 +7,12 @@ namespace App\Game;
 use App\Exceptions\LocalizedException;
 use App\Game\Data\CellPosition;
 use App\Game\Data\Entity;
-use App\Game\Data\EntityTurn;
-use App\Game\Data\GameBoard;
 use App\Game\Data\GameType;
 use App\Game\Models\GamePlayer;
 use App\Game\Models\GameState;
 use App\Game\Support\GameTypeManagersAwareTrait;
 use App\User\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 class GameManager
@@ -74,9 +73,12 @@ class GameManager
     public function makeTurn(GameState $gameState, User $user, string $entityId, CellPosition $position, array $params): GameState
     {
         return transaction(function () use ($gameState, $user, $entityId, $position, $params) {
-            $gameState = GameState::query()->lockForUpdate()->findOrFail($gameState->id);
-            // TODO check that user belongs to game
-            if ($gameState->currentTurn->user->isNot($user)) {
+            $gameState = GameState::lockForUpdate()
+                ->whereHas('users', fn (Builder $query) => $query->where('users.id', $user->id))
+                ->find($gameState->id);
+            if (!$gameState) {
+                throw new LocalizedException('game_not_found');
+            } elseif ($gameState->currentTurn->user->isNot($user)) {
                 throw new LocalizedException('game_another_user_turn');
             }
 
@@ -84,20 +86,6 @@ class GameManager
             $entity = $gameState->entities->firstWhere('id', $entityId);
             if (!$entity) {
                 throw new LocalizedException('game_invalid_turn');
-            }
-
-            /** @var GameBoard $gameBoard */
-            $gameBoard = $gameState->board;
-            if (!$gameBoard->hasCell($position)) {
-                throw new LocalizedException('game_invalid_turn_position');
-            }
-
-            $allowedTurns = $this->getAllowedTurnsForGameEntities($gameState);
-            $hasAllowedTurn = $allowedTurns->where('entityId', $entityId)
-                ->where(fn (EntityTurn $entityTurn) => $entityTurn->position->is($position))
-                ->isNotEmpty();
-            if (!$hasAllowedTurn) {
-                throw new LocalizedException('game_invalid_turn_position');
             }
 
             $gameTypeManager = $this->getGameTypeManager($gameState->type);

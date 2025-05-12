@@ -11,6 +11,7 @@ use App\Game\Behaviors\TurnOverHandlerCellBehavior;
 use App\Game\Data\CellPosition;
 use App\Game\Data\Context;
 use App\Game\Data\Entity;
+use App\Game\Data\EntityCollection;
 use App\Game\Data\EntityStateItem;
 use App\Game\Data\EntityTurn;
 use App\Game\Data\EntityType;
@@ -78,7 +79,7 @@ class ClassicGameManager implements GameTypeManager
         $entities = $gameState->entities;
 
         $playerEntities = $entities->where('gamePlayerId', $turnPlayer->id)
-            ->reject(fn(Entity $e) => $e->state->bool(EntityStateItem::IsKilled->value));
+            ->reject(fn (Entity $e) => $e->state->bool(EntityStateItem::IsKilled->value));
 
         $enforcedTurnsEntityByIds = $playerEntities->reject(function (Entity $entity) use ($gameBoard) {
             $currentCell = $gameBoard->getCell($entity->position);
@@ -95,7 +96,7 @@ class ClassicGameManager implements GameTypeManager
         $turnContextData = array_merge($boardGenerator->getTurnContextData(), compact('gameBoard', 'teammatePlayerIds'));
 
         return $playerEntities
-            ->when($enforcedTurnsEntityByIds->isNotEmpty())->filter(fn(Entity $entity) => $enforcedTurnsEntityByIds->has($entity->id))
+            ->when($enforcedTurnsEntityByIds->isNotEmpty())->filter(fn (Entity $entity) => $enforcedTurnsEntityByIds->has($entity->id))
             ->map(function (Entity $entity) use ($gameBoard, $entities, $turnContextData) {
                 $currentCell = $gameBoard->getCell($entity->position);
                 $turnContext = new Context(array_merge($turnContextData, compact('currentCell')));
@@ -114,9 +115,10 @@ class ClassicGameManager implements GameTypeManager
                         return new EntityTurn($entity->id, $cell, $position);
                     })
                     ->filter()
-                    ->pipe(fn(Collection $possibleTurns) => $entityBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext))
-                    ->pipe(fn(Collection $possibleTurns) => $cellBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext))
-                    ->pipe(fn(Collection $possibleTurns) => $possibleTurns->filter(function (EntityTurn $entityTurn) use ($entity, $entities, $turnContext) {
+                    ->pipe(fn (Collection $possibleTurns) => $entityBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext))
+                    ->pipe(fn (Collection $possibleTurns) => $cellBehavior->processPossibleTurns($possibleTurns, $entity, $entities, $turnContext))
+                    ->pipe(fn (Collection $possibleTurns) => $possibleTurns->filter(function (EntityTurn $entityTurn) use ($entity, $entities, $turnContext) {
+                        // Process turns by final cell behaviors
                         if (!$this->isCellBehaviorContract($entityTurn->cell->type, TurnAllowerCellBehavior::class)) {
                             return true;
                         }
@@ -125,21 +127,29 @@ class ClassicGameManager implements GameTypeManager
                         $cellBehavior = $this->getCellBehavior($entityTurn->cell->type);
 
                         return $cellBehavior->allowsTurn($entityTurn, $entity, $entities, $turnContext);
-                    }));
+                    }))
+                    ->pipe(fn (Collection $possibleTurns) => $this->processPossibleTurnsCanCarry($possibleTurns, $entity, $entities, $turnContext));
             })
             ->flatten();
     }
 
     public function processTurn(GameState $gameState, Entity $entity, CellPosition $position, array $params): void
     {
+        $allowedTurns = $this->getAllowedTurns($gameState, $gameState->currentTurn);
+
+        $turn = $allowedTurns->firstWhere(fn (EntityTurn $turn) => $turn->entityId === $entity->id && $turn->position->is($position));
+        if (!$turn) {
+            throw new LocalizedException('game_invalid_turn_position');
+        }
+
+        $carriageEntity = $this->extractCarriageEntity($gameState, $entity, $params);
+        $this->checkCarriageAllowedForTurn($turn, $carriageEntity);
+
         $positionToMove = $position;
         $updatedEntity = $entity;
         $prevPosition = $updatedEntity->position;
 
         $iterations = 0;
-        $finalizeTurn = true;
-
-        $carriageEntity = $this->extractCarriageEntity($gameState, $entity, $params);
 
         do {
             // Detects deadlock and according to rules kill entity (it may happen only with pirates)
@@ -152,6 +162,8 @@ class ClassicGameManager implements GameTypeManager
                     $updatedCarriageEntity = $carriageEntity->updatePosition($prevPosition);
                     $gameState->entities = $gameState->entities->updateEntity($updatedCarriageEntity);
                 }
+
+                $finalizeTurn = true;
 
                 break;
             }
@@ -246,5 +258,48 @@ class ClassicGameManager implements GameTypeManager
         }
 
         return $carriageEntity;
+    }
+
+    private function checkCarriageAllowedForTurn(EntityTurn $turn, ?Entity $carriageEntity): void
+    {
+        if (!$carriageEntity) {
+            return;
+        }
+
+        if (!$turn->canCarry($carriageEntity->id)) {
+            throw new LocalizedException('game_carriage_entity_not_allowed');
+        }
+    }
+
+    /**
+     * @param  Collection<EntityTurn>  $possibleTurns
+     * @return Collection<EntityTurn>
+     */
+    private function processPossibleTurnsCanCarry(Collection $possibleTurns, Entity $entity, EntityCollection $entities, Context $turnContext): Collection
+    {
+        $carriableEntities = $entities->filter(fn (Entity $e) => $e->position->is($entity->position) && $this->entityCanBeCarried($e->type));
+        if ($carriableEntities->isEmpty()) {
+            return $possibleTurns;
+        }
+
+        return $possibleTurns
+            ->map(function (EntityTurn $turn) use ($entity, $turnContext, $carriableEntities) {
+                $canBeCarriedEntityIds = $carriableEntities->filter(function (Entity $carried) use ($entity, $turn, $turnContext) {
+                    $cellBehavior = $this->getCellBehavior($turn->cell->type);
+
+                    return $cellBehavior->allowsEntityToBeCarriedTo($entity, $carried, $turn->cell, $turn->position, $turnContext);
+                })->map->id->all();
+
+                if ($canBeCarriedEntityIds) {
+                    return $turn->allowCarry($canBeCarriedEntityIds);
+                }
+
+                return $turn;
+            });
+    }
+
+    private function entityCanBeCarried(EntityType $entityType): bool
+    {
+        return in_array($entityType, [EntityType::Coin], true);
     }
 }

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Game\Commands;
 
+use App\Game\Context\TurnContext;
 use App\Game\Data\CellPosition;
-use App\Game\Models\GameState;
 
 readonly class UpdatePositionCommand implements Command
 {
@@ -15,11 +15,11 @@ readonly class UpdatePositionCommand implements Command
         public string $triggeredBy,
     ) {}
 
-    public function execute(GameState $gameState): void
+    public function execute(TurnContext $turnContext): void
     {
-        $entity = $gameState->entities->getEntityByIdOrFail($this->entityId);
+        $entity = $turnContext->getEntities()->getEntityByIdOrFail($this->entityId);
 
         $updatedEntity = $entity->updatePosition($this->newPosition);
-        $gameState->entities = $gameState->entities->updateEntity($updatedEntity);
+        $turnContext->updateEntity($updatedEntity);
     }
 }

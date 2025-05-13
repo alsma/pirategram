@@ -12,11 +12,8 @@ use App\Game\Data\EntityCollection;
 use App\Game\Data\EntityStateItem;
 use App\Game\Data\EntityType;
 use App\Game\Data\GameBoard;
-use App\Game\Data\GameType;
 use App\Game\GameTypes\ClassicGameManager;
-use App\Game\Models\GamePlayer;
-use App\Game\Models\GameState;
-use App\User\Models\User;
+use Tests\Fakes\InMemoryTurnContext;
 use Tests\TestCase;
 
 class ClassicGameTypeManagerTest extends TestCase
@@ -25,22 +22,23 @@ class ClassicGameTypeManagerTest extends TestCase
 
     private GameBoard $gameBoard;
 
+    private int $turnPlayerId;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->gameManager = $this->app->make(ClassicGameManager::class);
         $this->gameBoard = new GameBoard(13, 13);
+        $this->turnPlayerId = random_int(0, 1000);
     }
 
     public function test_pirate_can_only_move_straight_from_ship(): void
     {
-        [$gameState, $player] = $this->createTestGameState();
-
         $shipPosition = new CellPosition(6, 0);
-        $pirate = new Entity(EntityType::Pirate, $shipPosition, $player->id);
-        $ship = new Entity(EntityType::Ship, $shipPosition, $player->id);
-        $gameState->entities = collect([$pirate, $ship]);
+        $pirate = new Entity(EntityType::Pirate, $shipPosition, $this->turnPlayerId);
+        $ship = new Entity(EntityType::Ship, $shipPosition, $this->turnPlayerId);
+        $entities = new EntityCollection([$pirate, $ship]);
 
         $this->gameBoard->setCell(new CellPosition(4, 0), new Cell(CellType::Water));
         $this->gameBoard->setCell(new CellPosition(5, 0), new Cell(CellType::Water));
@@ -53,7 +51,7 @@ class ClassicGameTypeManagerTest extends TestCase
         $this->gameBoard->setCell(new CellPosition(7, 1), new Cell(CellType::Terrain));
         $this->gameBoard->setCell(new CellPosition(8, 1), new Cell(CellType::Terrain));
 
-        $allowedTurns = $this->gameManager->getAllowedTurns($gameState, $player);
+        $allowedTurns = $this->gameManager->getAllowedTurns(InMemoryTurnContext::createSimpleContext($this->gameBoard, $this->turnPlayerId, $entities));
 
         $expectedMoves = collect([
             new CellPosition(6, 1),
@@ -66,11 +64,9 @@ class ClassicGameTypeManagerTest extends TestCase
 
     public function test_pirate_moves_on_land_normally(): void
     {
-        [$gameState, $player] = $this->createTestGameState();
-
         $piratePosition = new CellPosition(6, 6);
-        $pirate = new Entity(EntityType::Pirate, $piratePosition, $player->id);
-        $gameState->entities = collect([$pirate]);
+        $pirate = new Entity(EntityType::Pirate, $piratePosition, $this->turnPlayerId);
+        $entities = new EntityCollection([$pirate]);
 
         $this->gameBoard->setCell(new CellPosition(5, 5), new Cell(CellType::Terrain));
         $this->gameBoard->setCell(new CellPosition(5, 6), new Cell(CellType::Terrain));
@@ -82,7 +78,7 @@ class ClassicGameTypeManagerTest extends TestCase
         $this->gameBoard->setCell(new CellPosition(7, 6), new Cell(CellType::Terrain));
         $this->gameBoard->setCell(new CellPosition(7, 7), new Cell(CellType::Terrain));
 
-        $allowedTurns = $this->gameManager->getAllowedTurns($gameState, $player);
+        $allowedTurns = $this->gameManager->getAllowedTurns(InMemoryTurnContext::createSimpleContext($this->gameBoard, $this->turnPlayerId, $entities));
 
         $expectedMoves = collect([
             new CellPosition(5, 5),
@@ -102,11 +98,9 @@ class ClassicGameTypeManagerTest extends TestCase
 
     public function test_ship_moves_only_on_water(): void
     {
-        [$gameState, $player] = $this->createTestGameState();
-
         $shipPosition = new CellPosition(6, 0);
-        $ship = new Entity(EntityType::Ship, $shipPosition, $player->id);
-        $gameState->entities = collect([$ship]);
+        $ship = new Entity(EntityType::Ship, $shipPosition, $this->turnPlayerId);
+        $entities = new EntityCollection([$ship]);
 
         $this->gameBoard->setCell(new CellPosition(6, 0), new Cell(CellType::Water));
         $this->gameBoard->setCell(new CellPosition(6, 0), new Cell(CellType::Water));
@@ -117,7 +111,7 @@ class ClassicGameTypeManagerTest extends TestCase
         $this->gameBoard->setCell(new CellPosition(6, 1), new Cell(CellType::Terrain));
         $this->gameBoard->setCell(new CellPosition(7, 1), new Cell(CellType::Terrain));
 
-        $allowedTurns = $this->gameManager->getAllowedTurns($gameState, $player);
+        $allowedTurns = $this->gameManager->getAllowedTurns(InMemoryTurnContext::createSimpleContext($this->gameBoard, $this->turnPlayerId, $entities));
 
         $expectedMoves = collect([
             new CellPosition(5, 0),
@@ -134,15 +128,14 @@ class ClassicGameTypeManagerTest extends TestCase
         $this->gameBoard->setCell(new CellPosition(2, 2), new Cell(CellType::Terrain));
         $this->gameBoard->setCell(new CellPosition(3, 2), new Cell(CellType::Terrain));
 
-        [$gameState, $player] = $this->createTestGameState();
+        $entity = new Entity(EntityType::Pirate, new CellPosition(2, 2), $this->turnPlayerId);
+        $entities = new EntityCollection([$entity]);
 
-        $entity = new Entity(EntityType::Pirate, new CellPosition(2, 2), $player->id);
-        $gameState->entities = new EntityCollection([$entity]);
+        $turnContext = new InMemoryTurnContext($this->gameBoard, $this->turnPlayerId, $entity, new CellPosition(3, 2), collect(), $entities);
 
-        $this->gameManager->processTurn($gameState, $entity, new CellPosition(3, 2));
+        $this->gameManager->processTurn($turnContext);
 
-        $updatedEntity = $gameState->entities->getEntityByIdOrFail($entity->id);
-        $this->assertEquals(new CellPosition(3, 2), $updatedEntity->position);
+        $this->assertEquals(new CellPosition(3, 2), $turnContext->getTurnEntity()->position);
     }
 
     public function test_triggers_cell_behavior_on_enter(): void
@@ -151,16 +144,15 @@ class ClassicGameTypeManagerTest extends TestCase
         $this->gameBoard->setCell(new CellPosition(3, 2), new Cell(CellType::Ice));
         $this->gameBoard->setCell(new CellPosition(4, 2), new Cell(CellType::Terrain));
 
-        [$gameState, $player] = $this->createTestGameState();
+        $entity = new Entity(EntityType::Pirate, new CellPosition(2, 2), $this->turnPlayerId);
+        $entities = new EntityCollection([$entity]);
 
-        $entity = new Entity(EntityType::Pirate, new CellPosition(2, 2), $player->id);
-        $gameState->entities = new EntityCollection([$entity]);
+        $turnContext = new InMemoryTurnContext($this->gameBoard, $this->turnPlayerId, $entity, new CellPosition(3, 2), collect(), $entities);
 
         // Ice cell that should slide entity
-        $this->gameManager->processTurn($gameState, $entity, new CellPosition(3, 2));
+        $this->gameManager->processTurn($turnContext);
 
-        $updatedEntity = $gameState->entities->getEntityByIdOrFail($entity->id);
-        $this->assertEquals(new CellPosition(4, 2), $updatedEntity->position);
+        $this->assertEquals(new CellPosition(4, 2), $turnContext->getTurnEntity()->position);
     }
 
     public function test_handles_infinite_loops_by_killing_entity(): void
@@ -169,15 +161,14 @@ class ClassicGameTypeManagerTest extends TestCase
         $this->gameBoard->setCell(new CellPosition(3, 2), new Cell(CellType::Arrow1, direction: 1));
         $this->gameBoard->setCell(new CellPosition(4, 2), new Cell(CellType::Arrow1, direction: 3));
 
-        [$gameState, $player] = $this->createTestGameState();
+        $entity = new Entity(EntityType::Pirate, new CellPosition(2, 2), $this->turnPlayerId);
+        $entities = new EntityCollection([$entity]);
 
-        $entity = new Entity(EntityType::Pirate, new CellPosition(2, 2), $player->id);
-        $gameState->entities = new EntityCollection([$entity]);
+        $turnContext = new InMemoryTurnContext($this->gameBoard, $this->turnPlayerId, $entity, new CellPosition(3, 2), collect(), $entities);
 
-        $this->gameManager->processTurn($gameState, $entity, new CellPosition(3, 2));
+        $this->gameManager->processTurn($turnContext);
 
-        $updatedEntity = $gameState->entities->getEntityByIdOrFail($entity->id);
-        $this->assertTrue($updatedEntity->state->bool(EntityStateItem::IsKilled->value));
+        $this->assertTrue($turnContext->getTurnEntity()->state->bool(EntityStateItem::IsKilled->value));
     }
 
     public function test_handles_recursive_cell_behavior(): void
@@ -186,15 +177,14 @@ class ClassicGameTypeManagerTest extends TestCase
         $this->gameBoard->setCell(new CellPosition(3, 2), new Cell(CellType::Ice));
         $this->gameBoard->setCell(new CellPosition(4, 2), new Cell(CellType::Arrow1, direction: 3));
 
-        [$gameState, $player] = $this->createTestGameState();
+        $entity = new Entity(EntityType::Pirate, new CellPosition(2, 2), $this->turnPlayerId);
+        $entities = new EntityCollection([$entity]);
 
-        $entity = new Entity(EntityType::Pirate, new CellPosition(2, 2), $player->id);
-        $gameState->entities = new EntityCollection([$entity]);
+        $turnContext = new InMemoryTurnContext($this->gameBoard, $this->turnPlayerId, $entity, new CellPosition(3, 2), collect(), $entities);
 
-        $this->gameManager->processTurn($gameState, $entity, new CellPosition(3, 2));
+        $this->gameManager->processTurn($turnContext);
 
-        $updatedEntity = $gameState->entities->getEntityByIdOrFail($entity->id);
-        $this->assertEquals(new CellPosition(2, 2), $updatedEntity->position);
+        $this->assertEquals(new CellPosition(2, 2), $turnContext->getTurnEntity()->position);
     }
 
     public function test_reveals_cells_when_entity_enters(): void
@@ -202,36 +192,17 @@ class ClassicGameTypeManagerTest extends TestCase
         $this->gameBoard->setCell(new CellPosition(2, 2), new Cell(CellType::Terrain));
         $this->gameBoard->setCell(new CellPosition(3, 2), new Cell(CellType::Gold1));
 
-        [$gameState, $player] = $this->createTestGameState();
+        $entity = new Entity(EntityType::Pirate, new CellPosition(2, 2), $this->turnPlayerId);
+        $entities = new EntityCollection([$entity]);
 
-        $entity = new Entity(EntityType::Pirate, new CellPosition(2, 2), $player->id);
-        $gameState->entities = new EntityCollection([$entity]);
+        $turnContext = new InMemoryTurnContext($this->gameBoard, $this->turnPlayerId, $entity, new CellPosition(3, 2), collect(), $entities);
 
-        $this->gameManager->processTurn($gameState, $entity, new CellPosition(3, 2));
+        $this->gameManager->processTurn($turnContext);
 
-        $updatedEntity = $gameState->entities->getEntityByIdOrFail($entity->id);
+        $updatedEntity = $turnContext->getTurnEntity();
         $this->assertEquals(new CellPosition(3, 2), $updatedEntity->position);
 
-        $updatedCell = $gameState->board->getCell($updatedEntity->position);
+        $updatedCell = $turnContext->getCell($updatedEntity->position);
         $this->assertTrue($updatedCell->revealed);
-    }
-
-    private function createTestGameState(): array
-    {
-        $gameState = new GameState;
-        $gameState->type = GameType::Classic;
-        $gameState->board = $this->gameBoard;
-        $gameState->save();
-
-        $player = new GamePlayer;
-        $player->user()->associate(User::factory()->create());
-        $player->gameState()->associate($gameState);
-        $player->order = 0;
-        $player->team_id = 0;
-        $player->save();
-
-        $gameState->currentTurn()->associate($player);
-
-        return [$gameState, $player];
     }
 }

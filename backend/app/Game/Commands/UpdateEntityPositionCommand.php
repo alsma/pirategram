@@ -7,7 +7,7 @@ namespace App\Game\Commands;
 use App\Game\Context\TurnContext;
 use App\Game\Data\CellPosition;
 
-readonly class UpdatePositionCommand implements Command
+readonly class UpdateEntityPositionCommand implements Command
 {
     public function __construct(
         public string $entityId,

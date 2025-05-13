@@ -9,4 +9,5 @@ enum EntityType: string
     case Pirate = 'pirate';
     case Coin = 'coin';
     case Ship = 'ship';
+    case Null = 'null';
 }

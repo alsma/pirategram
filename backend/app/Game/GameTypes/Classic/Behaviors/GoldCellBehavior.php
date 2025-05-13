@@ -6,17 +6,18 @@ namespace App\Game\GameTypes\Classic\Behaviors;
 
 use App\Exceptions\RuntimeException;
 use App\Game\Behaviors\BaseCellBehavior;
+use App\Game\Commands\SpawnEntityCommand;
+use App\Game\Context\TurnContext;
 use App\Game\Data\Cell;
 use App\Game\Data\CellPosition;
 use App\Game\Data\CellType;
 use App\Game\Data\Entity;
 use App\Game\Data\EntityType;
-use App\Game\Models\GameState;
 use Illuminate\Support\Collection;
 
 class GoldCellBehavior extends BaseCellBehavior
 {
-    public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void
+    public function onEnter(TurnContext $turnContext, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void
     {
         if ($cell->revealed) {
             return;
@@ -31,9 +32,7 @@ class GoldCellBehavior extends BaseCellBehavior
             default => throw new RuntimeException("Unexpected cell type '{$cell->type->value}'.")
         };
 
-        $coins = Collection::range(1, $coinsCnt)
-            ->map(fn () => new Entity(EntityType::Coin, $position));
-
-        $gameState->entities = $gameState->entities->merge($coins);
+        Collection::range(1, $coinsCnt)
+            ->each(fn () => $turnContext->applyCommand(new SpawnEntityCommand(new Entity(EntityType::Coin, $position), __METHOD__)));
     }
 }

@@ -14,10 +14,10 @@ const EntityType = {
 }
 
 const PirateClassesByTeamId = {
-  0: 'bg-green-600 border-green-600',
+  0: 'bg-green-900 border-green-900',
   1: 'bg-red-600 border-red-600',
   2: 'bg-blue-600 border-blue-600',
-  3: 'bg-white-600 border-white-600',
+  3: 'bg-black-600 border-white-600',
 }
 
 const PiratePositionByCnt = {
@@ -261,7 +261,8 @@ function Page() {
                     const selected = selectedEntity?.id === e.id ? 'animate-bounce' : ''
 
                     if (e.type === EntityType.Pirate) {
-                      const color = PirateClassesByTeamId[teamByPlayerHash[e.playerHash]]
+                      const turnOrder = gameState.players.find(p => p.hash === e.playerHash).order
+                      const color = PirateClassesByTeamId[turnOrder]
                       const position = PiratePositionByCnt[pirateCnt]
 
                       children.push(

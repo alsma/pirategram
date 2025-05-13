@@ -4,18 +4,17 @@ declare(strict_types=1);
 
 namespace App\Game\Behaviors;
 
+use App\Game\Context\TurnContext;
 use App\Game\Data\Cell;
 use App\Game\Data\CellPosition;
-use App\Game\Data\Context;
 use App\Game\Data\Entity;
-use App\Game\Models\GameState;
 use Illuminate\Support\Collection;
 
 class NullCellBehavior extends BaseCellBehavior
 {
-    public function onLeave(GameState $gameState, Entity $entity, CellPosition $position, Cell $cell, CellPosition $newPosition): void {}
+    public function onLeave(TurnContext $turnContext, Entity $entity, CellPosition $position, Cell $cell, CellPosition $newPosition): void {}
 
-    public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void {}
+    public function onEnter(TurnContext $turnContext, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void {}
 
     public function allowsEntityToStay(): bool
     {
@@ -23,7 +22,7 @@ class NullCellBehavior extends BaseCellBehavior
     }
 
     /** {@inheritDoc} */
-    public function processPossibleTurns(Collection $possibleTurns, Entity $entity, Collection $entities, Context $context): Collection
+    public function processPossibleTurns(Collection $possibleTurns, TurnContext $turnContext): Collection
     {
         return $possibleTurns;
     }

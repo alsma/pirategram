@@ -6,20 +6,19 @@ namespace App\Game\GameTypes\Classic\Behaviors;
 
 use App\Exceptions\RuntimeException;
 use App\Game\Behaviors\BaseCellBehavior;
+use App\Game\Commands\UpdateEntityStateCommand;
+use App\Game\Context\TurnContext;
 use App\Game\Data\Cell;
 use App\Game\Data\CellPosition;
 use App\Game\Data\CellType;
-use App\Game\Data\Context;
 use App\Game\Data\Entity;
 use App\Game\Data\EntityStateItem;
 use App\Game\Data\EntityTurn;
-use App\Game\Data\GameBoard;
-use App\Game\Models\GameState;
 use Illuminate\Support\Collection;
 
 class LabyrinthCellBehavior extends BaseCellBehavior
 {
-    public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void
+    public function onEnter(TurnContext $turnContext, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void
     {
         $turnsOnCellLeft = $entity->state->int(EntityStateItem::TurnsOnCellLeft->value, -1);
 
@@ -38,25 +37,23 @@ class LabyrinthCellBehavior extends BaseCellBehavior
         }
 
         // If turns left is now zero, remove the state
-        $updatedState = ($turnsOnCellLeft === 0)
-            ? $entity->state->unset(EntityStateItem::TurnsOnCellLeft->value)
-            : $entity->state->set(EntityStateItem::TurnsOnCellLeft->value, $turnsOnCellLeft);
+        $updateStateCommand = ($turnsOnCellLeft === 0)
+            ? UpdateEntityStateCommand::unset($entity->id, EntityStateItem::TurnsOnCellLeft->value, __METHOD__)
+            : UpdateEntityStateCommand::set($entity->id, EntityStateItem::TurnsOnCellLeft->value, $turnsOnCellLeft, __METHOD__);
 
-        $updatedEntity = $entity->updateState($updatedState);
-        $gameState->entities = $gameState->entities->updateEntity($updatedEntity);
+        $turnContext->applyCommand($updateStateCommand);
     }
 
-    public function processPossibleTurns(Collection $possibleTurns, Entity $entity, Collection $entities, Context $context): Collection
+    public function processPossibleTurns(Collection $possibleTurns, TurnContext $turnContext): Collection
     {
-        if ($entity->state->int(EntityStateItem::TurnsOnCellLeft->value) > 0) {
-            /** @var GameBoard $gameBoard */
-            $gameBoard = $context->mustGet('gameBoard');
+        $entity = $turnContext->getTurnEntity();
 
+        if ($entity->state->int(EntityStateItem::TurnsOnCellLeft->value) > 0) {
             $possibleTurns = collect([
-                new EntityTurn($entity->id, $gameBoard->getCell($entity->position), $entity->position),
+                new EntityTurn($entity->id, $turnContext->getCell($entity->position), $entity->position),
             ]);
         }
 
-        return parent::processPossibleTurns($possibleTurns, $entity, $entities, $context);
+        return parent::processPossibleTurns($possibleTurns, $turnContext);
     }
 }

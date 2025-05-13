@@ -8,6 +8,7 @@ use App\Game\Data\Cell;
 use App\Game\Data\CellPosition;
 use App\Game\Data\CellPositionSet;
 use App\Game\Data\CellType;
+use App\Game\Data\ContextData;
 use App\Game\Data\GameBoard;
 
 class BoardGenerator
@@ -33,12 +34,12 @@ class BoardGenerator
         return $result;
     }
 
-    public function getTurnContextData(): array
+    public function getTurnContextData(): ContextData
     {
-        return [
+        return new ContextData([
             'shipTurnBoundariesSet' => $this->getShipTurnBoundariesSet(),
             'pirateWaterTurnBoundariesSet' => $this->getPirateWaterTurnBoundariesSet(),
-        ];
+        ]);
     }
 
     private function getIslandCells(): array

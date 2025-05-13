@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Game\Commands;
 
-use App\Game\Models\GameState;
+use App\Game\Context\TurnContext;
 
 interface Command
 {
-    public function execute(GameState $gameState): void;
+    public function execute(TurnContext $turnContext): void;
 }

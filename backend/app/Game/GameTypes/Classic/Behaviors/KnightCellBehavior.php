@@ -5,26 +5,21 @@ declare(strict_types=1);
 namespace App\Game\GameTypes\Classic\Behaviors;
 
 use App\Game\Behaviors\BaseCellBehavior;
+use App\Game\Context\TurnContext;
 use App\Game\Data\Cell;
 use App\Game\Data\CellPosition;
 use App\Game\Data\CellType;
-use App\Game\Data\Context;
 use App\Game\Data\Entity;
 use App\Game\Data\EntityTurn;
-use App\Game\Data\GameBoard;
 use App\Game\Data\Vector;
-use App\Game\Models\GameState;
 use Illuminate\Support\Collection;
 
 class KnightCellBehavior extends BaseCellBehavior
 {
-    public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void {}
+    public function onEnter(TurnContext $turnContext, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void {}
 
-    public function processPossibleTurns(Collection $possibleTurns, Entity $entity, Collection $entities, Context $context): Collection
+    public function processPossibleTurns(Collection $possibleTurns, TurnContext $turnContext): Collection
     {
-        /** @var GameBoard $gameBoard */
-        $gameBoard = $context->mustGet('gameBoard');
-
         $baseVectors = collect([
             new Vector(2, 1),
             new Vector(2, -1),
@@ -36,9 +31,10 @@ class KnightCellBehavior extends BaseCellBehavior
             new Vector(-1, -2),
         ]);
 
-        $possibleTurns = $baseVectors->map(function (Vector $vector) use ($entity, $gameBoard) {
+        $entity = $turnContext->getTurnEntity();
+        $possibleTurns = $baseVectors->map(function (Vector $vector) use ($turnContext, $entity) {
             $position = $entity->position->add($vector);
-            $cell = $gameBoard->getCell($position);
+            $cell = $turnContext->getCell($position);
             if (!$cell) {
                 return null;
             }
@@ -50,7 +46,7 @@ class KnightCellBehavior extends BaseCellBehavior
             return new EntityTurn($entity->id, $cell, $position);
         })->filter();
 
-        return parent::processPossibleTurns($possibleTurns, $entity, $entities, $context);
+        return parent::processPossibleTurns($possibleTurns, $turnContext);
     }
 
     public function allowsEntityToStay(): bool

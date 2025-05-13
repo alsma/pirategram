@@ -4,19 +4,18 @@ declare(strict_types=1);
 
 namespace App\Game\Behaviors;
 
+use App\Game\Context\TurnContext;
 use App\Game\Data\Cell;
 use App\Game\Data\CellPosition;
-use App\Game\Data\Context;
 use App\Game\Data\Entity;
 use App\Game\Data\EntityTurn;
-use App\Game\Models\GameState;
 use Illuminate\Support\Collection;
 
 interface CellBehavior
 {
-    public function onEnter(GameState $gameState, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void;
+    public function onEnter(TurnContext $turnContext, Entity $entity, CellPosition $prevPosition, Cell $cell, CellPosition $position): void;
 
-    public function onLeave(GameState $gameState, Entity $entity, CellPosition $position, Cell $cell, CellPosition $newPosition): void;
+    public function onLeave(TurnContext $turnContext, Entity $entity, CellPosition $position, Cell $cell, CellPosition $newPosition): void;
 
     public function allowsEntityToStay(): bool;
 
@@ -25,10 +24,9 @@ interface CellBehavior
      * It should not produce any side effects (such as entity modification etc.)
      *
      * @param  Collection<int, EntityTurn>  $possibleTurns
-     * @param  Collection<int, Entity>  $entities
      * @return Collection<int, EntityTurn>
      */
-    public function processPossibleTurns(Collection $possibleTurns, Entity $entity, Collection $entities, Context $context): Collection;
+    public function processPossibleTurns(Collection $possibleTurns, TurnContext $turnContext): Collection;
 
-    public function allowsEntityToBeCarriedTo(Entity $carrier, Entity $carriage, Cell $cell, CellPosition $cellPosition, Context $context): bool;
+    public function allowsEntityToBeCarriedTo(Entity $carrier, Entity $carriage, Cell $cell, CellPosition $cellPosition, TurnContext $turnContext): bool;
 }

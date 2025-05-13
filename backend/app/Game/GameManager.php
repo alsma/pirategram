@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Game;
 
 use App\Exceptions\LocalizedException;
+use App\Game\Context\DefaultTurnContext;
 use App\Game\Data\CellPosition;
+use App\Game\Data\ContextData;
 use App\Game\Data\Entity;
 use App\Game\Data\GameType;
 use App\Game\Models\GamePlayer;
@@ -89,7 +91,7 @@ class GameManager
             }
 
             $gameTypeManager = $this->getGameTypeManager($gameState->type);
-            $gameTypeManager->processTurn($gameState, $entity, $position, $params);
+            $gameTypeManager->processTurn(new DefaultTurnContext($gameState, $entity, $position, new ContextData($params)));
 
             $gameState->save();
 
@@ -101,6 +103,6 @@ class GameManager
     {
         $gameTypeManager = $this->getGameTypeManager($gameState->type);
 
-        return $gameTypeManager->getAllowedTurns($gameState, $gameState->currentTurn);
+        return $gameTypeManager->getAllowedTurns(DefaultTurnContext::createFromGameState($gameState));
     }
 }

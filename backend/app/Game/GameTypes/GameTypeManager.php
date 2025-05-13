@@ -4,20 +4,18 @@ declare(strict_types=1);
 
 namespace App\Game\GameTypes;
 
-use App\Game\Data\CellPosition;
-use App\Game\Data\Entity;
+use App\Game\Context\TurnContext;
+use App\Game\Data\EntityCollection;
 use App\Game\Data\GameBoard;
-use App\Game\Models\GamePlayer;
-use App\Game\Models\GameState;
 use Illuminate\Support\Collection;
 
 interface GameTypeManager
 {
     public function generateBoard(): GameBoard;
 
-    public function generateEntities(Collection $players): Collection;
+    public function generateEntities(Collection $players): EntityCollection;
 
-    public function getAllowedTurns(GameState $gameState, GamePlayer $turnPlayer): Collection;
+    public function getAllowedTurns(TurnContext $turnContext): Collection;
 
-    public function processTurn(GameState $gameState, Entity $entity, CellPosition $position, array $params): void;
+    public function processTurn(TurnContext $turnContext): void;
 }

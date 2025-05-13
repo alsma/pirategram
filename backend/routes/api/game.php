@@ -11,3 +11,7 @@ Route::prefix('game')
         Route::post('active-game', GetActiveGameController::class);
         Route::post('turn', MakeTurnController::class);
     });
+
+Route::get('test', function (): void {
+    phpinfo();
+});

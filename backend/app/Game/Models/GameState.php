@@ -6,6 +6,7 @@ namespace App\Game\Models;
 
 use App\Game\Casts\EntitiesCollectionCast;
 use App\Game\Casts\GameBoardCast;
+use App\Game\Casts\StateCast;
 use App\Game\Data\GameType;
 use App\Support\Models\HashedIdTrait;
 use App\User\Models\User;
@@ -55,6 +56,7 @@ class GameState extends Model
             'type' => GameType::class,
             'board' => GameBoardCast::class,
             'entities' => EntitiesCollectionCast::class,
+            'data' => StateCast::class,
         ];
     }
 }

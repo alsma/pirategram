@@ -39,7 +39,12 @@ class MultiDirectionArrowBehavior extends BaseCellBehavior
         return $possibleTurns->filter(fn (EntityTurn $turn) => $allowedPositions->has((string) $turn->position));
     }
 
-    public function getTurnVectors(Cell $cell): Collection
+    public function allowsEntityToStay(): bool
+    {
+        return false;
+    }
+
+    private function getTurnVectors(Cell $cell): Collection
     {
         $baseVectors = match ($cell->type) {
             CellType::Arrow2 => collect([new Vector(-1, 0), new Vector(1, 0)]),
@@ -51,10 +56,5 @@ class MultiDirectionArrowBehavior extends BaseCellBehavior
         };
 
         return $this->rotateVectors($cell->direction ?? 0, $baseVectors);
-    }
-
-    public function allowsEntityToStay(): bool
-    {
-        return false;
     }
 }

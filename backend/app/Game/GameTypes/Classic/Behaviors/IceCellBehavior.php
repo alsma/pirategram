@@ -34,11 +34,16 @@ class IceCellBehavior extends BaseCellBehavior
 
     public function allowsEntityToBeCarriedTo(Entity $carrier, Entity $carriage, Cell $cell, CellPosition $cellPosition, TurnContext $turnContext): bool
     {
+        if (!parent::allowsEntityToBeCarriedTo($carrier, $carriage, $cell, $cellPosition, $turnContext)) {
+            return false;
+        }
+
         $vector = $cellPosition->difference($carrier->position);
         $newPosition = $cellPosition->add($vector);
 
         $newCell = $turnContext->getCell($newPosition);
         if ($newCell) {
+            // TODO probably bug when cell type has allowsEntityToBeCarriedTo method
             return parent::allowsEntityToBeCarriedTo($carrier, $carriage, $newCell, $newPosition, $turnContext);
         }
 

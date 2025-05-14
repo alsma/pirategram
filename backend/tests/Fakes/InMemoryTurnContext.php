@@ -13,6 +13,7 @@ use App\Game\Data\Entity;
 use App\Game\Data\EntityCollection;
 use App\Game\Data\EntityType;
 use App\Game\Data\GameBoard;
+use App\Game\Data\State;
 use Illuminate\Support\Collection;
 
 class InMemoryTurnContext implements TurnContext
@@ -24,21 +25,25 @@ class InMemoryTurnContext implements TurnContext
     public function __construct(
         public readonly GameBoard $gameBoard,
         public readonly int $turnPlayerId,
+        public readonly int $turnPlayerTeamId,
         public Entity $turnEntity,
         public readonly CellPosition $turnPosition,
         public readonly Collection $teammatePlayerIds,
         public EntityCollection $entities,
         public ?ContextData $data = null,
+        public ?State $gameData = null,
     ) {
         $this->appliedCommands = collect();
         $this->data = $this->data ?? new ContextData([]);
+        $this->gameData = $this->gameData ?? new State([]);
     }
 
-    public static function createSimpleContext(GameBoard $gameBoard, int $turnPlayerId, EntityCollection $entities): self
+    public static function createSimpleContext(GameBoard $gameBoard, int $turnPlayerId, int $turnPlayerTeamId, EntityCollection $entities): self
     {
         return new self(
             $gameBoard,
             $turnPlayerId,
+            $turnPlayerTeamId,
             new Entity(EntityType::Null, new CellPosition(0, 0)),
             new CellPosition(0, 0),
             collect([$turnPlayerId]),
@@ -51,11 +56,14 @@ class InMemoryTurnContext implements TurnContext
         return $this->turnPlayerId;
     }
 
-    public function setTurnEntity(Entity $entity): TurnContext
+    public function getTurnPlayerTeamId(): int
+    {
+        return $this->turnPlayerId % 2;
+    }
+
+    public function setTurnEntity(Entity $entity): void
     {
         $this->turnEntity = $entity;
-
-        return $this;
     }
 
     public function getTurnEntity(): Entity
@@ -103,21 +111,34 @@ class InMemoryTurnContext implements TurnContext
         $this->entities = $this->entities->updateEntity($updatedEntity);
     }
 
+    public function removeEntity(Entity $entity): void
+    {
+        $this->entities = $this->entities->removeEntity($entity);
+    }
+
     public function mergeEntities(Collection $entities): void
     {
         $this->entities = $this->entities->merge($entities);
     }
 
-    public function mergeData(ContextData $contextData): TurnContext
+    public function mergeData(ContextData $contextData): void
     {
         $this->data = $this->data->merge($contextData);
-
-        return $this;
     }
 
     public function getData(): ContextData
     {
         return $this->data;
+    }
+
+    public function getGameData(): State
+    {
+        return $this->gameData;
+    }
+
+    public function updateGameData(State $data): void
+    {
+        $this->gameData = $data;
     }
 
     public function applyCommand(Command $command): void

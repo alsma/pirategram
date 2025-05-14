@@ -13,11 +13,20 @@ readonly class UpdateEntityPositionCommand implements Command
         public string $entityId,
         public CellPosition $newPosition,
         public string $triggeredBy,
+        public bool $safe = false,
     ) {}
 
     public function execute(TurnContext $turnContext): void
     {
-        $entity = $turnContext->getEntities()->getEntityByIdOrFail($this->entityId);
+        if ($this->safe) {
+            $entity = $turnContext->getEntities()->getEntityById($this->entityId);
+
+            if (!$entity) {
+                return;
+            }
+        } else {
+            $entity = $turnContext->getEntities()->getEntityByIdOrFail($this->entityId);
+        }
 
         $updatedEntity = $entity->updatePosition($this->newPosition);
         $turnContext->updateEntity($updatedEntity);

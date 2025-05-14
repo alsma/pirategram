@@ -11,6 +11,7 @@ use App\Game\Data\ContextData;
 use App\Game\Data\Entity;
 use App\Game\Data\EntityCollection;
 use App\Game\Data\EntityType;
+use App\Game\Data\State;
 use App\Game\Models\GameState;
 use Illuminate\Support\Collection;
 
@@ -42,6 +43,11 @@ class DefaultTurnContext implements TurnContext
         return $this->gameState->current_turn_game_player_id;
     }
 
+    public function getTurnPlayerTeamId(): int
+    {
+        return $this->gameState->currentTurn->team_id;
+    }
+
     public function getTeammatePlayerIds(): Collection
     {
         return $this->gameState->players
@@ -49,11 +55,9 @@ class DefaultTurnContext implements TurnContext
             ->pluck('id', 'id');
     }
 
-    public function setTurnEntity(Entity $entity): TurnContext
+    public function setTurnEntity(Entity $entity): void
     {
         $this->entity = $entity;
-
-        return $this;
     }
 
     public function getTurnEntity(): Entity
@@ -69,6 +73,11 @@ class DefaultTurnContext implements TurnContext
     public function updateEntity(Entity $updatedEntity): void
     {
         $this->gameState->entities = $this->gameState->entities->updateEntity($updatedEntity);
+    }
+
+    public function removeEntity(Entity $entity): void
+    {
+        $this->gameState->entities = $this->gameState->entities->removeEntity($entity);
     }
 
     public function mergeEntities(Collection $entities): void
@@ -101,16 +110,24 @@ class DefaultTurnContext implements TurnContext
         return $this->gameState->board->mapCells($callback);
     }
 
-    public function mergeData(ContextData $contextData): self
+    public function mergeData(ContextData $contextData): void
     {
         $this->data = $this->data->merge($contextData);
-
-        return $this;
     }
 
     public function getData(): ContextData
     {
         return $this->data;
+    }
+
+    public function getGameData(): State
+    {
+        return $this->gameState->data;
+    }
+
+    public function updateGameData(State $data): void
+    {
+        $this->gameState->data = $data;
     }
 
     public function applyCommand(Command $command): void

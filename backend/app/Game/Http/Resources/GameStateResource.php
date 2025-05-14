@@ -40,6 +40,7 @@ class GameStateResource extends JsonResource
             'board' => GameBoardResource::make($this->resource->board),
             'entities' => EntityResource::collection($this->resource->entities),
             'players' => GamePlayerResource::collection($this->resource->players),
+            'data' => $this->resource->data->toArray(),
             $this->mergeWhen($this->resource->current_turn_game_player_id, fn () => [
                 'currentTurnPlayer' => GamePlayerResource::make($this->resource->currentTurn),
             ]),

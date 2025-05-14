@@ -10,6 +10,7 @@ use App\Game\Data\CellPosition;
 use App\Game\Data\ContextData;
 use App\Game\Data\Entity;
 use App\Game\Data\GameType;
+use App\Game\Data\State;
 use App\Game\Models\GamePlayer;
 use App\Game\Models\GameState;
 use App\Game\Support\GameTypeManagersAwareTrait;
@@ -46,6 +47,7 @@ class GameManager
             $game->type = $gameType;
             $game->board = $gameTypeManager->generateBoard();
             $game->entities = collect();
+            $game->data = new State;
             $game->save();
 
             $players = collect();

@@ -9,7 +9,7 @@ use Illuminate\Support\Collection;
 
 class GameBoard implements Arrayable
 {
-    public array $cells; // TODO add private(set)
+    private array $cells;
 
     public function __construct(
         public readonly int $rows,
@@ -26,6 +26,11 @@ class GameBoard implements Arrayable
         }
 
         return $instance;
+    }
+
+    public function getCells(): array
+    {
+        return $this->cells;
     }
 
     public function setCell(CellPosition $position, Cell $cell): void

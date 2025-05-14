@@ -7,7 +7,7 @@ namespace App\Game\Commands;
 use App\Exceptions\RuntimeException;
 use App\Game\Context\TurnContext;
 
-class UpdateEntityStateCommand implements Command
+readonly class UpdateEntityStateCommand implements Command
 {
     const string ACTION_SET = 'set';
 
@@ -15,13 +15,13 @@ class UpdateEntityStateCommand implements Command
 
     const string ACTION_INCREMENT = 'increment';
 
-    const string ACTION_DECREMENT = 'increment';
+    const string ACTION_DECREMENT = 'decrement';
 
     public function __construct(
-        public readonly string $entityId,
-        public readonly string $action,
-        public readonly string $stateItem,
-        public readonly mixed $payload,
+        public string $entityId,
+        public string $action,
+        public string $stateItem,
+        public mixed $payload,
         public string $triggeredBy,
     ) {}
 

@@ -43,6 +43,7 @@ namespace App\Game\Models{
  * @property \App\Game\Data\GameType $type
  * @property \App\Game\Data\GameBoard $board
  * @property \App\Game\Data\EntityCollection|null $entities
+ * @property \App\Game\Data\State $data
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property int|null $current_turn_game_player_id
@@ -58,6 +59,7 @@ namespace App\Game\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereBoard($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereCreatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereCurrentTurnGamePlayerId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereData($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereEntities($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GameState whereType($value)

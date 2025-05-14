@@ -28,7 +28,7 @@ class SingleArrowCellBehavior extends BaseCellBehavior
         };
 
         $vector = $this->rotateVector($cell->direction, $baseVector);
-        $newPosition = $entity->position->add($vector);
+        $newPosition = $position->add($vector);
         $turnContext->applyCommand(new UpdateEntityPositionCommand($entity->id, $newPosition, __METHOD__));
     }
 

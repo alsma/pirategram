@@ -6,7 +6,7 @@ namespace App\Game\Data;
 
 use Illuminate\Contracts\Support\Arrayable;
 
-readonly class EntityState implements Arrayable
+readonly class State implements Arrayable
 {
     public function __construct(
         private array $state = [],
@@ -35,6 +35,11 @@ readonly class EntityState implements Arrayable
     public function int(string $key, int $default = 0): int
     {
         return (int) ($this->state[$key] ?? $default);
+    }
+
+    public function array(string $key, array $default = []): array
+    {
+        return (array) ($this->state[$key] ?? $default);
     }
 
     public function unset(string $key): self

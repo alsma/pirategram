@@ -10,8 +10,8 @@ use App\Game\Data\EntityStateItem;
 readonly class KillEntityCommand implements Command
 {
     public function __construct(
-        public readonly string $entityId,
-        public readonly string $triggeredBy,
+        public string $entityId,
+        public string $triggeredBy,
     ) {}
 
     public function execute(TurnContext $turnContext): void

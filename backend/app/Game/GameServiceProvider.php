@@ -60,6 +60,7 @@ class GameServiceProvider extends ServiceProvider
             $instance->registerCellBehavior(CellType::Trap, ClassicBehaviors\TrapCellBehavior::class);
             $instance->registerCellBehavior(CellType::Fortress, ClassicBehaviors\FortressCellBehavior::class);
             $instance->registerCellBehavior(CellType::ReviveFortress, ClassicBehaviors\FortressReviveCellBehavior::class);
+            $instance->registerCellBehavior(CellType::Water, ClassicBehaviors\WaterCellBehavior::class);
 
             return $instance;
         });

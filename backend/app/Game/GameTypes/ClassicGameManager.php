@@ -54,14 +54,14 @@ class ClassicGameManager implements GameTypeManager
         } elseif ($players->count() === 4) {
             // 2x2 mode or 4 Free-for-all
             $spawns->push(new CellPosition(6, 0));
+            $spawns->push(new CellPosition(12, 6));
             $spawns->push(new CellPosition(6, 12));
             $spawns->push(new CellPosition(0, 6));
-            $spawns->push(new CellPosition(12, 6));
         } else {
             throw new RuntimeException('Unexpected number of players.');
         }
 
-        $players = $players->sortBy('team_id', SORT_NUMERIC)->values();
+        $players = $players->sortBy('order', SORT_NUMERIC)->values();
         $spawns->reduce(function (Collection $entities, CellPosition $spawn, int $idx) use ($players) {
             $entities->push(new Entity(EntityType::Ship, $spawn, $players[$idx]->id));
             $entities->push(new Entity(EntityType::Pirate, $spawn, $players[$idx]->id));
@@ -94,9 +94,8 @@ class ClassicGameManager implements GameTypeManager
             ->when($enforcedTurnsEntityByIds->isNotEmpty())->filter(fn (Entity $entity) => $enforcedTurnsEntityByIds->has($entity->id))
             ->map(function (Entity $entity) use ($turnContext) {
                 $currentCell = $turnContext->getCell($entity->position);
-                $turnContext
-                    ->setTurnEntity($entity)
-                    ->mergeData(new ContextData(compact('currentCell')));
+                $turnContext->setTurnEntity($entity);
+                $turnContext->mergeData(new ContextData(compact('currentCell')));
 
                 $entityBehavior = $this->getEntityBehavior($entity->type);
                 $cellBehavior = $this->getCellBehavior($currentCell->type);
@@ -145,6 +144,8 @@ class ClassicGameManager implements GameTypeManager
         $carriageEntity = $this->extractCarriageEntity($turnContext);
         $this->checkCarriageAllowedForTurn($turn, $carriageEntity);
 
+        $turnContext->mergeData(new ContextData(compact('carriageEntity')));
+
         $positionToMove = $position;
         $updatedEntity = $entity;
         $prevPosition = $initialPosition = $updatedEntity->position;
@@ -158,7 +159,7 @@ class ClassicGameManager implements GameTypeManager
 
                 // if deadlock detected and pirate died, return coin to position before turn
                 if ($carriageEntity) {
-                    $turnContext->applyCommand(new UpdateEntityPositionCommand($carriageEntity->id, $prevPosition, __METHOD__.'(max recursive turns)'));
+                    $turnContext->applyCommand(new UpdateEntityPositionCommand($carriageEntity->id, $prevPosition, __METHOD__.'(max recursive turns)', safe: true));
                 }
 
                 $finalizeTurn = true;
@@ -203,7 +204,7 @@ class ClassicGameManager implements GameTypeManager
         } while ($positionBeforeCellEnter->isNot($positionToMove));
 
         if ($carriageEntity) {
-            $turnContext->applyCommand(new UpdateEntityPositionCommand($carriageEntity->id, $updatedEntity->position, __METHOD__.'(carriage)'));
+            $turnContext->applyCommand(new UpdateEntityPositionCommand($carriageEntity->id, $updatedEntity->position, __METHOD__.'(carriage)', safe: true));
         }
 
         $turnContext->getEntities()
@@ -247,7 +248,7 @@ class ClassicGameManager implements GameTypeManager
 
     private function extractCarriageEntity(TurnContext $turnContext): ?Entity
     {
-        $carriageEntityId = $turnContext->getData()->get('carriageEntityId', null);
+        $carriageEntityId = $turnContext->getData()->get('carriageEntityId');
         if (!$carriageEntityId) {
             return null;
         }

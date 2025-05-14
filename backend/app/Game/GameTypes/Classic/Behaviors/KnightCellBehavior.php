@@ -11,6 +11,7 @@ use App\Game\Data\CellPosition;
 use App\Game\Data\CellType;
 use App\Game\Data\Entity;
 use App\Game\Data\EntityTurn;
+use App\Game\Data\EntityType;
 use App\Game\Data\Vector;
 use Illuminate\Support\Collection;
 
@@ -40,7 +41,12 @@ class KnightCellBehavior extends BaseCellBehavior
             }
 
             if ($cell->type === CellType::Water) {
-                return null;
+                $hasShipInPosition = $turnContext->getEntities()->contains(fn (Entity $e) => $e->type === EntityType::Ship &&
+                    $turnContext->getTeammatePlayerIds()->has($e->gamePlayerId) &&
+                    $e->position->is($position));
+                if (!$hasShipInPosition) {
+                    return null;
+                }
             }
 
             return new EntityTurn($entity->id, $cell, $position);

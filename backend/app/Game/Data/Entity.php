@@ -19,7 +19,7 @@ readonly class Entity implements Arrayable
         public EntityType $type,
         public CellPosition $position,
         public ?int $gamePlayerId = null,
-        public EntityState $state = new EntityState,
+        public State $state = new State,
         ?string $id = null,
     ) {
         $this->id = $id ?? $type->value.':'.str_random(6);
@@ -31,7 +31,7 @@ readonly class Entity implements Arrayable
             EntityType::from($data['type']),
             new CellPosition($data['col'], $data['row']),
             $data['game_player_id'] ?? null,
-            new EntityState($data['state'] ?? []),
+            new State($data['state'] ?? []),
             $data['id'] ?? null,
         );
     }
@@ -63,7 +63,7 @@ readonly class Entity implements Arrayable
         return new self($this->type, $position, $this->gamePlayerId, $this->state, $this->id);
     }
 
-    public function updateState(EntityState $state): self
+    public function updateState(State $state): self
     {
         return new self($this->type, $this->position, $this->gamePlayerId, $state, $this->id);
     }

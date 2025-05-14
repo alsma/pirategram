@@ -34,6 +34,8 @@ class PlaneCellBehavior extends BaseCellBehavior
             ->mapCells(function (Cell $cell, CellPosition $position) use ($entity) {
                 if ($cell->type === CellType::Water) {
                     return null;
+                } elseif ($position->is($entity->position)) {
+                    return null;
                 }
 
                 return new EntityTurn($entity->id, $cell, $position);

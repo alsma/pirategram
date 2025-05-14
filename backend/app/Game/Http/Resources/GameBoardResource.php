@@ -14,7 +14,7 @@ class GameBoardResource extends JsonResource
     public function toArray($request): array
     {
         return [
-            'cells' => collect($this->cells)
+            'cells' => collect($this->resource->getCells())
                 ->map(function ($row) {
                     return collect($row)
                         ->map(function (?Cell $cell) {

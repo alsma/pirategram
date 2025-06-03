@@ -1,11 +1,12 @@
 // https://vike.dev/onRenderHtml
+
 export { onRenderHtml }
 
 import ReactDOMServer from 'react-dom/server'
 import { Layout } from './Layout'
 import { escapeInject, dangerouslySkipEscape } from 'vike/server'
-import logoUrl from './logo.svg'
 import { getPageTitle } from './getPageTitle'
+import { AuthProvider } from '@/store/context/auth'
 
 function onRenderHtml(pageContext) {
   const { Page } = pageContext
@@ -14,11 +15,15 @@ function onRenderHtml(pageContext) {
   // onRenderHtml() to support SPA
   if (!Page) throw new Error('My onRenderHtml() hook expects pageContext.Page to be defined')
 
+  const initialAuthState = { user: pageContext.user, isAuthenticated: !!pageContext.user }
+
   // Alternatively, we can use an HTML stream, see https://vike.dev/streaming
   const pageHtml = ReactDOMServer.renderToString(
-    <Layout pageContext={pageContext}>
-      <Page />
-    </Layout>
+    <AuthProvider initialState={initialAuthState}>
+      <Layout pageContext={pageContext}>
+        <Page />
+      </Layout>
+    </AuthProvider>
   )
 
   const title = getPageTitle(pageContext)
@@ -28,12 +33,11 @@ function onRenderHtml(pageContext) {
     <html lang="en">
       <head>
         <meta charset="UTF-8" />
-        <link rel="icon" href="${logoUrl}" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="description" content="${desc}" />
         <title>${title}</title>
       </head>
-      <body>
+      <body class="bg-gradient-to-br from-[#101214] via-[#1a1c20] to-[#0d0f11] min-h-screen text-gray-100">
         <div id="react-root">${dangerouslySkipEscape(pageHtml)}</div>
       </body>
     </html>`

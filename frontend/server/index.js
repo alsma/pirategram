@@ -13,8 +13,8 @@
 
 import express from 'express'
 import compression from 'compression'
-import { renderPage } from 'vike/server'
-import { root } from './root.js'
+import { renderPage, createDevMiddleware } from 'vike/server'
+import { root, outDir } from './root.js'
 const isProduction = process.env.NODE_ENV === 'production'
 
 startServer()
@@ -24,24 +24,11 @@ async function startServer() {
 
   app.use(compression())
 
-  // Vite integration
-  if (isProduction) {
-    // In production, we need to serve our static assets ourselves.
-    // (In dev, Vite's middleware serves our static assets.)
-    const sirv = (await import('sirv')).default
-    app.use(sirv(`${root}/dist/client`))
+  if (!isProduction) {
+    const { devMiddleware } = await createDevMiddleware({ root })
+    app.use(devMiddleware)
   } else {
-    // We instantiate Vite's development server and integrate its middleware to our server.
-    // ⚠️ We instantiate it only in development. (It isn't needed in production and it
-    // would unnecessarily bloat our production server.)
-    const vite = await import('vite')
-    const viteDevMiddleware = (
-      await vite.createServer({
-        root,
-        server: { middlewareMode: true }
-      })
-    ).middlewares
-    app.use(viteDevMiddleware)
+    app.use(express.static(`${root}/${outDir}/client`))
   }
 
   // ...

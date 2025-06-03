@@ -15,7 +15,6 @@ class User extends Authenticatable
 
     protected $hidden = [
         'password',
-        'remember_token',
     ];
 
     protected function casts(): array
@@ -34,5 +33,10 @@ class User extends Authenticatable
     public function scopeOfUsername(Builder $query, string $username): Builder
     {
         return $query->where('username', $username);
+    }
+
+    public function getRememberTokenName()
+    {
+        return null;
     }
 }

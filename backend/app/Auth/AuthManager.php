@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Auth;
 
+use App\Auth\Data\LoginDTO;
+use App\Auth\Data\RegisterDTO;
 use App\Auth\Events\UserRegistered;
 use App\Auth\Events\UserRegistering;
 use App\Exceptions\LocalizedException;
@@ -13,7 +15,6 @@ use App\User\Models\User;
 use App\User\UserManager;
 use App\User\UsernameGenerator;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 
 class AuthManager
 {
@@ -23,45 +24,51 @@ class AuthManager
         private readonly UserManager $userManager,
     ) {}
 
-    public function register(string $email, string $language, array $options): User
+    public function register(RegisterDTO $data): User
     {
-        return transaction(function () use ($email, $language, $options) {
-            $emailTaken = User::lockForUpdate()->ofEmail($email)->exists();
+        return transaction(function () use ($data) {
+            $emailTaken = User::lockForUpdate()->ofEmail($data->email)->exists();
             if ($emailTaken) {
                 throw new LocalizedException('email_taken');
             }
 
-            if (!($options['agreement'] ?? false)) {
+            if (!($data->options['agreement'] ?? false)) {
                 throw new LocalizedException('agreement_not_accepted');
             }
 
             $username = $this->usernameGenerator->generateUsername();
-            $language = $this->localizationManager->matchLanguage($language);
+            $language = $this->localizationManager->matchLanguage($data->language);
 
-            $user = $this->userManager->createUser(new CreateUserDTO($username, $email, null, $language));
+            $user = $this->userManager->createUser(new CreateUserDTO($username, $data->email, null, $language));
 
             event(new UserRegistering($user));
             transaction_committed(function () use ($user): void {
-                Auth::setUser($user);
+                Auth::login($user);
                 event(new UserRegistered($user));
-                $user->refresh();
             });
 
             return $user;
         });
     }
 
-    public function login(string $identity, string $password): User
+    public function login(LoginDTO $data): User
     {
-        $user = User::lockForUpdate()->ofEmail($identity)->first();
-        if (!$user) {
-            $user = User::lockForUpdate()->ofUsername($identity)->first();
-        }
+        return transaction(function () use ($data) {
+            $isLoggedIn = Auth::attempt([
+                str_contains($data->identity, '@') ? 'email' : 'username' => $data->identity,
+                'password' => $data->password,
+            ]);
 
-        if (!($user instanceof User && Hash::check($password, $user->password))) {
-            throw new LocalizedException('invalid_login_or_password');
-        }
+            if (!$isLoggedIn) {
+                throw new LocalizedException('invalid_login_or_password');
+            }
 
-        return $user;
+            return Auth::user();
+        });
+    }
+
+    public function logout(): void
+    {
+        Auth::logout();
     }
 }

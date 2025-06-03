@@ -11,4 +11,7 @@ export default {
       '@': root,
     },
   },
+  server: {
+    allowedHosts: ['pirategram.loc'],
+  }
 }

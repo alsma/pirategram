@@ -1,11 +1,14 @@
 // https://vike.dev/onRenderClient
+
 export { onRenderClient }
 
 import ReactDOM from 'react-dom/client'
 import { Layout } from './Layout'
 import { getPageTitle } from './getPageTitle'
+import { AuthProvider } from '@/store/context/auth'
 
 let root
+
 function onRenderClient(pageContext) {
   const { Page } = pageContext
 
@@ -16,10 +19,14 @@ function onRenderClient(pageContext) {
   const container = document.getElementById('react-root')
   if (!container) throw new Error('DOM element #react-root not found')
 
+  const initialAuthState = { user: pageContext.user, isAuthenticated: !!pageContext.user }
+
   const page = (
-    <Layout pageContext={pageContext}>
-      <Page />
-    </Layout>
+    <AuthProvider initialState={initialAuthState}>
+      <Layout pageContext={pageContext}>
+        <Page />
+      </Layout>
+    </AuthProvider>
   )
   if (pageContext.isHydration) {
     root = ReactDOM.hydrateRoot(container, page)

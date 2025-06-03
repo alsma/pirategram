@@ -13,5 +13,6 @@ function Link(props) {
   const { href } = props
   const isActive = href === '/' ? urlPathname === href : urlPathname.startsWith(href)
   const className = [props.className, isActive && 'is-active'].filter(Boolean).join(' ')
+
   return <a {...props} className={className} />
 }

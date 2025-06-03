@@ -14,6 +14,7 @@ class UserResource extends JsonResource
     {
         return [
             'username' => $this->resource->username,
+            'registered' => $this->resource->created_at->timestamp,
         ];
     }
 }

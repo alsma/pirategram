@@ -13,5 +13,5 @@ Route::prefix('game')
     });
 
 Route::get('test', function (): void {
-    phpinfo();
+    dd(request()->user('web'));
 });

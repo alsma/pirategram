@@ -9,6 +9,7 @@ use App\Game\Data\CellPosition;
 use App\Game\Data\CellType;
 use App\Game\Data\Entity;
 use App\Game\Data\EntityType;
+use App\Game\Commands\UpdateEntityPositionCommand;
 use App\Game\GameTypes\Classic\Behaviors\CrocodileCellBehavior;
 use Tests\TestCase;
 
@@ -44,6 +45,10 @@ class CrocodileCellBehaviorTest extends TestCase
         $this->behavior->onEnter($turnContext, $pirate, $pirateStartPosition, $turnContext->getCell($crocodilePosition), $crocodilePosition);
 
         $this->assertTrue($turnContext->getTurnEntity()->position->is($pirateStartPosition));
+
+        $command = $turnContext->getAppliedCommands()->last();
+        $this->assertInstanceOf(UpdateEntityPositionCommand::class, $command);
+        $this->assertTrue($command->newPosition->is($pirateStartPosition));
     }
 
     public function test_allows_entity_to_stay(): void

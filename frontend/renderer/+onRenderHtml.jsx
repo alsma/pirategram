@@ -15,7 +15,7 @@ function onRenderHtml(pageContext) {
   // onRenderHtml() to support SPA
   if (!Page) throw new Error('My onRenderHtml() hook expects pageContext.Page to be defined')
 
-  const initialAuthState = { user: pageContext.user, isAuthenticated: !!pageContext.user }
+  const initialAuthState = { user: pageContext.user, isAuthenticated: Boolean(pageContext.user) }
 
   // Alternatively, we can use an HTML stream, see https://vike.dev/streaming
   const pageHtml = ReactDOMServer.renderToString(

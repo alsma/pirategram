@@ -7,9 +7,12 @@ import { useAuthStore } from '@/store/context/auth'
 
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useToast } from '@/hooks/use-toast.js'
+import { useToastStore } from '@/store/toast-store.js'
 
 export default function AuthForm({ defaultPanel }) {
   const { login, signup } = useAuthStore()
+  const { addSimpleSuccessToast, addSimpleErrorToast } = useToastStore()
   const [isLoading, setIsLoading] = useState(false)
 
   const handleLogin = async (e) => {
@@ -18,15 +21,15 @@ export default function AuthForm({ defaultPanel }) {
 
     const form = e.target
     const formData = new FormData(form)
-    const identifier = formData.get("identifier")
-    const password = formData.get("password")
+    const identity = formData.get('identity')
+    const password = formData.get('password')
 
     try {
-      await login(identifier, password)
+      await login(identity, password)
       navigate("/play")
-      toast.success("Login successful!")
+      addSimpleSuccessToast("Login successful!")
     } catch (error) {
-      toast.error("Login failed. Please check your credentials.")
+      addSimpleErrorToast("Login failed. Please check your credentials.")
     } finally {
       setIsLoading(false)
     }
@@ -43,9 +46,9 @@ export default function AuthForm({ defaultPanel }) {
     try {
       await signup(email)
       navigate("/play")
-      toast.success("Account created! Check your email for verification.")
+      addSimpleSuccessToast("Account created! Check your email for verification.")
     } catch (error) {
-      toast.error("Signup failed. Please try again.")
+      addSimpleErrorToast("Signup failed. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -75,7 +78,7 @@ export default function AuthForm({ defaultPanel }) {
             <div className="relative">
               <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
               <Input
-                name="identifier"
+                name="identity"
                 placeholder="Pirate#1234 or email"
                 className="pl-10 bg-gray-700/50 border-gray-600 focus:border-ember focus:ring-1 focus:ring-ember/50"
                 required

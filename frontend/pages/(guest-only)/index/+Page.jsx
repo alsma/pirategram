@@ -1,23 +1,8 @@
-import { useEffect } from 'react'
-import { redirect } from 'vike/abort'
-
-import { useAuthStore } from "@/store/context/auth"
-
 import { Link } from '@/renderer/Link'
-import { usePageContext } from '@/renderer/usePageContext.jsx'
 
 export { Page }
 
 function Page() {
-  console.log(usePageContext().user)
-  const { isAuthenticated } = useAuthStore()
-
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      // throw redirect('/play')
-    }
-  }, [isAuthenticated, redirect])
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4">

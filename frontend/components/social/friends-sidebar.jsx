@@ -10,7 +10,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Users, UserPlus, Search, MoreVertical, Eye, Swords, UserMinus, UserCheck, UserX } from "lucide-react"
 
 import placeholderImg from '@/assets/placeholder.svg'
-import { useToast } from '@/hooks/use-toast.js'
 import { useToastStore } from '@/store/toast-store.js'
 
 export default function FriendsSidebar() {

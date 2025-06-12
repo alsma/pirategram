@@ -28,6 +28,13 @@ export const useToastStore = create((set, get) => ({
     })
   },
 
+  addSimpleErrorToast: (message) => {
+    get().addToast({
+      type: ToastType.Error,
+      title: message,
+    })
+  },
+
   addToast: (toast) => {
     toast.id = randomString()
     toast.variant = toast.variant || ToastTypeToVariant[toast.type]

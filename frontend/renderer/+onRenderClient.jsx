@@ -19,7 +19,7 @@ function onRenderClient(pageContext) {
   const container = document.getElementById('react-root')
   if (!container) throw new Error('DOM element #react-root not found')
 
-  const initialAuthState = { user: pageContext.user, isAuthenticated: !!pageContext.user }
+  const initialAuthState = { user: pageContext.user, isAuthenticated: Boolean(pageContext.user) }
 
   const page = (
     <AuthProvider initialState={initialAuthState}>

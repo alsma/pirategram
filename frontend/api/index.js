@@ -27,7 +27,7 @@ export async function sendRequest(url, method, data = undefined, headers = {}) {
   let query = ''
   if (method === 'GET' && data) {
     query = qs.stringify(data, { skipNull: true })
-    query = query.length ? `${query}` : ''
+    query = query.length ? `?${query}` : ''
   }
 
   const fullUrl = `${appBaseUrl}/${url}${query}`

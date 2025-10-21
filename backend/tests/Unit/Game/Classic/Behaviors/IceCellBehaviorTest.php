@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Game\Classic\Behaviors;
 
+use App\Game\Commands\KillEntityCommand;
+use App\Game\Commands\UpdateEntityPositionCommand;
 use App\Game\Data\Cell;
 use App\Game\Data\CellPosition;
 use App\Game\Data\CellType;
 use App\Game\Data\Entity;
 use App\Game\Data\EntityStateItem;
 use App\Game\Data\EntityType;
-use App\Game\Commands\KillEntityCommand;
-use App\Game\Commands\UpdateEntityPositionCommand;
 use App\Game\GameTypes\Classic\Behaviors\IceCellBehavior;
 use Tests\TestCase;
 
@@ -139,7 +139,6 @@ class IceCellBehaviorTest extends TestCase
 
         $this->assertTrue($this->behavior->allowsEntityToBeCarriedTo($carrier, $coin, $turnContext->getCell($icePosition), $icePosition, $turnContext));
     }
-
 
     public function test_carried_coin_blocked_when_next_cell_missing(): void
     {

@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Game\Classic\Behaviors;
 
+use App\Game\Commands\UpdateEntityPositionCommand;
 use App\Game\Data\Cell;
 use App\Game\Data\CellPosition;
 use App\Game\Data\CellType;
 use App\Game\Data\Entity;
 use App\Game\Data\EntityType;
-use App\Game\Commands\UpdateEntityPositionCommand;
 use App\Game\GameTypes\Classic\Behaviors\CrocodileCellBehavior;
 use Tests\TestCase;
 

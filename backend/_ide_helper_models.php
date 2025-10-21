@@ -13,8 +13,6 @@
 
 namespace App\Game\Models{
 /**
- * 
- *
  * @property int $id
  * @property int $game_state_id
  * @property int $user_id
@@ -37,8 +35,6 @@ namespace App\Game\Models{
 
 namespace App\Game\Models{
 /**
- * 
- *
  * @property int $id
  * @property \App\Game\Data\GameType $type
  * @property \App\Game\Data\GameBoard $board
@@ -68,16 +64,76 @@ namespace App\Game\Models{
 	class GameState extends \Eloquent {}
 }
 
+namespace App\MatchMaking\Models{
+/**
+ * @property int $id
+ * @property string $mode
+ * @property string $status
+ * @property array<array-key, mixed> $teams
+ * @property array<array-key, mixed> $players
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameMatch newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameMatch newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameMatch query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameMatch whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameMatch whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameMatch whereMode($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameMatch wherePlayers($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameMatch whereStatus($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameMatch whereTeams($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|GameMatch whereUpdatedAt($value)
+ */
+	class GameMatch extends \Eloquent {}
+}
+
+namespace App\MatchMaking\Models{
+/**
+ * @property int $id
+ * @property int $leader_id
+ * @property string $mode
+ * @property string $status
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Party newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Party newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Party query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Party whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Party whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Party whereLeaderId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Party whereMode($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Party whereStatus($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Party whereUpdatedAt($value)
+ */
+	class Party extends \Eloquent {}
+}
+
+namespace App\MatchMaking\Models{
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property int $party_id
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property-read \App\MatchMaking\Models\Party $party
+ * @property-read \App\User\Models\User $user
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|PartyMember newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|PartyMember newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|PartyMember query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|PartyMember whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|PartyMember whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|PartyMember wherePartyId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|PartyMember whereUserId($value)
+ */
+	class PartyMember extends \Eloquent {}
+}
+
 namespace App\User\Models{
 /**
- * 
- *
  * @property int $id
  * @property string $username
  * @property string $email
  * @property \Illuminate\Support\Carbon|null $email_verified_at
  * @property string|null $password
- * @property string|null $api_token
  * @property string $language
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -89,7 +145,6 @@ namespace App\User\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User ofEmail(string $email)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User ofUsername(string $username)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User query()
- * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereApiToken($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereCreatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereEmail($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereEmailVerifiedAt($value)

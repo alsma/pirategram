@@ -21,5 +21,7 @@ class GameManagerTest extends TestCase
     public function test_new_game(): void
     {
         $game = $this->gameManager->newGame();
+
+        $this->assertNotNull($game);
     }
 }

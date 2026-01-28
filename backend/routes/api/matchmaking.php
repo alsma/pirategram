@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-use App\MatchMaking\Http\Controllers\MatchMakingController;
+use App\MatchMaking\Http\Controllers\MatchMakingApiController;
 
-Route::prefix('/matchmaking')
+Route::prefix('/mm')
     ->middleware('auth:sanctum')
     ->group(function () {
-        Route::post('/start', [MatchmakingController::class, 'start']);
-        Route::post('/cancel', [MatchmakingController::class, 'cancel']);
-        Route::post('/tickets/{ticketId}/accept', [MatchmakingController::class, 'accept']);
-        Route::post('/tickets/{ticketId}/decline', [MatchmakingController::class, 'decline']);
+        Route::post('/search/start', [MatchMakingApiController::class, 'startSearch']);
+        Route::post('/search/cancel', [MatchMakingApiController::class, 'cancelSearch']);
+        Route::get('/state', [MatchMakingApiController::class, 'getState']);
+        Route::post('/ticket/{ticketId}/accept', [MatchMakingApiController::class, 'acceptTicket']);
+        Route::post('/ticket/{ticketId}/decline', [MatchMakingApiController::class, 'declineTicket']);
     });

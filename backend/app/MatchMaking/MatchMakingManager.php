@@ -4,277 +4,731 @@ declare(strict_types=1);
 
 namespace App\MatchMaking;
 
-use App\MatchMaking\Broadcasting\SearchUpdated;
-use App\MatchMaking\Broadcasting\TicketCreated;
-use App\MatchMaking\Broadcasting\TicketUpdated;
-use App\MatchMaking\Jobs\TicketTimeoutJob;
+use App\MatchMaking\Broadcasting\MMMatchStarted;
+use App\MatchMaking\Broadcasting\MMSearchUpdated;
+use App\MatchMaking\Broadcasting\MMStarting;
+use App\MatchMaking\Broadcasting\MMTicketCreated;
+use App\MatchMaking\Broadcasting\MMTicketExpired;
+use App\MatchMaking\Broadcasting\MMTicketUpdated;
+use App\MatchMaking\Jobs\MatchStartJob;
+use App\MatchMaking\Jobs\TicketExpiryJob;
 use App\MatchMaking\Models\GameMatch;
-use App\MatchMaking\ValueObjects\SearchStatus;
+use App\MatchMaking\ValueObjects\CancelReason;
+use App\MatchMaking\ValueObjects\GameMode;
+use App\MatchMaking\ValueObjects\GroupStatus;
+use App\MatchMaking\ValueObjects\SlotStatus;
 use App\MatchMaking\ValueObjects\TicketStatus;
+use App\User\Models\User;
 use Illuminate\Redis\RedisManager;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class MatchMakingManager
 {
-    public const array MODES = ['1v1', '2v2', 'ffa4'];
-
     public const array QUEUE_KEYS = [
         '1v1' => 'mm:queue:1v1',
         '2v2' => 'mm:queue:2v2',
         'ffa4' => 'mm:queue:ffa4',
     ];
 
-    public const string PARTY_KEY_PREFIX = 'mm:party:';
+    public const string GROUP_KEY_PREFIX = 'mm:group:';
 
     public const string TICKET_KEY_PREFIX = 'mm:ticket:';
 
-    private int $widenStepSeconds = 10; // widening config
+    public const string ACTIVE_SESSION_PREFIX = 'mm:active_session:user:';
 
-    private int $widenPerStep = 25; // MMR points per step
+    public const int SEARCH_TIMEOUT_SECONDS = 600;
 
-    private int $baseTicketTtl = 15; // seconds for ready check
+    public const int READY_TIMEOUT_SECONDS = 15;
+
+    public const int START_DELAY_SECONDS = 3;
+
+    public const int SESSION_TTL_SECONDS = 1800;
+
+    private int $widenStepSeconds = 10;
+
+    private int $widenPerStep = 25;
 
     public function __construct(
-        private readonly RedisManager $redisManager,
+        private readonly RedisManager $redis,
         private readonly GroupAssembler $groupAssembler,
     ) {}
 
-    /**
-     * Start/replace search for a party (leader triggers it).
-     * $party: ['party_id'=>int, 'leader_id'=>int, 'members'=>[ ['id'=>, 'mmr'=>], ...], 'mode'=>string]
-     */
-    public function startSearch(array $party): void
+    public function validateSession(int $userId, string $sessionId): void
     {
-        $this->assertMode($party['mode']);
-
-        $partyId = (int) $party['party_id'];
-        $queueKey = self::QUEUE_KEYS[$party['mode']];
-
-        $members = collect($party['members']);
-        $avgMmr = (int) $members->avg('mmr');
-
-        $partyKey = self::PARTY_KEY_PREFIX.$partyId;
-
-        $status = SearchStatus::Searching;
-
-        // Store party state
-        $size = $members->count();
-        $this->redisManager->hmset($partyKey, [
-            'party_id' => $partyId,
-            'leader_id' => $party['leader_id'],
-            'members_json' => json_encode($party['members']),
-            'size' => $size,
-            'base_mmr' => $avgMmr,
-            'mode' => $party['mode'],
-            'enqueued_at' => now()->timestamp,
-            'status' => $status->value,
-        ]);
-        $this->redisManager->zadd($queueKey, $avgMmr, "party:{$partyId}");
-
-        broadcast(new SearchUpdated($partyId, $status, [
-            'mode' => $party['mode'],
-            'avg_mmr' => $avgMmr,
-            'size' => $size,
-        ]));
-    }
-
-    public function cancelSearch(int $partyId, string $mode): void
-    {
-        $this->assertMode($mode);
-        $queueKey = self::QUEUE_KEYS[$mode];
-        $this->redisManager->zrem($queueKey, "party:{$partyId}");
-        $this->redisManager->hset(self::PARTY_KEY_PREFIX.$partyId, 'status', SearchStatus::Cancelled->value);
-
-        broadcast(new SearchUpdated($partyId, SearchStatus::Cancelled));
-    }
-
-    public function processTick(): void
-    {
-        foreach (self::MODES as $mode) {
-            $this->processMode($mode);
+        $activeSession = $this->getActiveSession($userId);
+        if ($activeSession !== null && $activeSession !== $sessionId) {
+            throw new ConflictHttpException('MULTI_TAB: Another session is active');
         }
     }
 
-    private function processMode(string $mode): void
+    public function setActiveSession(int $userId, string $sessionId): void
     {
-        $queueKey = self::QUEUE_KEYS[$mode];
+        $key = self::ACTIVE_SESSION_PREFIX.$userId;
+        $this->redis->setex($key, self::SESSION_TTL_SECONDS, $sessionId);
+    }
 
-        // Pull top N entries to consider (bounded for perf; widen logic increases acceptance window)
-        $candidateEntries = $this->redisManager->zrange($queueKey, 0, 99, true); // member => score
-        if (empty($candidateEntries)) {
+    public function clearActiveSession(int $userId): void
+    {
+        $key = self::ACTIVE_SESSION_PREFIX.$userId;
+        $this->redis->del($key);
+    }
+
+    public function startSearch(User $user, GameMode $mode, string $sessionId): array
+    {
+        $this->validateSession($user->id, $sessionId);
+
+        $groupKey = "u:{$user->id}";
+        $hashKey = self::GROUP_KEY_PREFIX.$groupKey;
+        $queueKey = self::QUEUE_KEYS[$mode->value];
+
+        $now = now()->timestamp;
+        $userMmr = $user->mmr ?? 0;
+
+        $members = [['user_id' => $user->id, 'mmr' => $userMmr]];
+
+        $this->redis->hmset($hashKey, [
+            'group_key' => $groupKey,
+            'mode' => $mode->value,
+            'mmr' => $userMmr,
+            'size' => 1,
+            'status' => GroupStatus::Searching->value,
+            'search_started_at' => $now,
+            'search_expires_at' => $now + self::SEARCH_TIMEOUT_SECONDS,
+            'ticket_id' => '',
+            'session_id' => $sessionId,
+            'members_json' => json_encode($members),
+            'updated_at' => $now,
+        ]);
+        $this->redis->expire($hashKey, self::SEARCH_TIMEOUT_SECONDS + 60);
+
+        $this->redis->zadd($queueKey, [$groupKey => $userMmr]);
+
+        $this->setActiveSession($user->id, $sessionId);
+
+        broadcast(new MMSearchUpdated(
+            userHash: $user->getHashedId(),
+            state: GroupStatus::Searching,
+            mode: $mode->value,
+            searchStartedAt: $now,
+            searchExpiresAt: $now + self::SEARCH_TIMEOUT_SECONDS,
+        ));
+
+        return [
+            'state' => GroupStatus::Searching->value,
+            'mode' => $mode->value,
+            'searchStartedAt' => $now,
+            'searchExpiresAt' => $now + self::SEARCH_TIMEOUT_SECONDS,
+            'sessionId' => $sessionId,
+        ];
+    }
+
+    public function cancelSearch(User $user, string $sessionId): void
+    {
+        $this->validateSession($user->id, $sessionId);
+
+        $groupKey = "u:{$user->id}";
+        $hashKey = self::GROUP_KEY_PREFIX.$groupKey;
+
+        $hash = $this->redis->hgetall($hashKey);
+        if (empty($hash)) {
             return;
         }
 
-        // Build party snapshots
-        $partySnapshots = [];
-        foreach ($candidateEntries as $member => $score) {
-            $partyId = (int) str_replace('party:', '', $member);
-            $partyKey = self::PARTY_KEY_PREFIX.$partyId;
-            $hash = $this->redisManager->hgetall($partyKey);
-            if (!$hash || ($hash['status'] ?? null) !== SearchStatus::Searching->value) {
-                // Remove stale
-                $this->redisManager->zrem($queueKey, $member);
+        $status = $hash['status'] ?? '';
+        if ($status === GroupStatus::Searching->value) {
+            $mode = $hash['mode'];
+            $queueKey = self::QUEUE_KEYS[$mode];
+            $this->redis->zrem($queueKey, $groupKey);
+        }
 
-                continue;
+        if ($status === GroupStatus::Proposed->value && !empty($hash['ticket_id'])) {
+            $this->declineTicket($user, $hash['ticket_id'], $sessionId);
+
+            return;
+        }
+
+        $this->redis->del($hashKey);
+        $this->clearActiveSession($user->id);
+
+        broadcast(new MMSearchUpdated(
+            userHash: $user->getHashedId(),
+            state: GroupStatus::Idle,
+            reason: CancelReason::UserCancelled->value,
+        ));
+    }
+
+    public function getState(User $user): array
+    {
+        $groupKey = "u:{$user->id}";
+        $hashKey = self::GROUP_KEY_PREFIX.$groupKey;
+
+        $hash = $this->redis->hgetall($hashKey);
+        if (empty($hash)) {
+            return ['state' => GroupStatus::Idle->value];
+        }
+
+        $status = $hash['status'] ?? GroupStatus::Idle->value;
+
+        $result = [
+            'state' => $status,
+            'mode' => $hash['mode'] ?? null,
+        ];
+
+        if ($status === GroupStatus::Searching->value) {
+            $result['searchStartedAt'] = (int) ($hash['search_started_at'] ?? 0);
+            $result['searchExpiresAt'] = (int) ($hash['search_expires_at'] ?? 0);
+        }
+
+        if (in_array($status, [GroupStatus::Proposed->value, GroupStatus::Starting->value], true)) {
+            $ticketId = $hash['ticket_id'] ?? '';
+            if ($ticketId) {
+                $ticketKey = self::TICKET_KEY_PREFIX.$ticketId;
+                $ticket = $this->redis->hgetall($ticketKey);
+                if ($ticket) {
+                    $result['ticketId'] = $ticketId;
+                    $result['readyExpiresAt'] = (int) ($ticket['ready_expires_at'] ?? 0);
+                    $slots = json_decode($ticket['slots_json'] ?? '[]', true);
+                    $result['slots'] = $slots;
+
+                    // Find the user's slot
+                    foreach ($slots as $slot) {
+                        if ($slot['user_id'] === $user->id) {
+                            $result['yourSlot'] = $slot['slot'];
+                            break;
+                        }
+                    }
+
+                    if ($status === GroupStatus::Starting->value) {
+                        $result['startAt'] = (int) ($ticket['start_at'] ?? 0);
+                    }
+                }
             }
-            $enq = (int) $hash['enqueued_at'];
-            $elapsed = max(0, now()->timestamp - $enq);
-            $widenSteps = intdiv($elapsed, $this->widenStepSeconds);
-            $hash['widen'] = $widenSteps;
-            $hash['effective_min'] = (int) $hash['base_mmr'] - $this->widenPerStep - ($widenSteps * $this->widenPerStep);
-            $hash['effective_max'] = (int) $hash['base_mmr'] + $this->widenPerStep + ($widenSteps * $this->widenPerStep);
-            $hash['members'] = json_decode($hash['members_json'], true);
-            $partySnapshots[$partyId] = $hash;
         }
 
-        if (empty($partySnapshots)) {
-            return;
+        if ($status === GroupStatus::InMatch->value) {
+            $result['matchId'] = (int) ($hash['match_id'] ?? 0);
         }
 
-        // Try to assemble groups depending on mode
-        $ticket = $this->groupAssembler->assemble($mode, $partySnapshots);
-        if (!$ticket) {
-            return;
-        }
-
-        // Remove all matched parties from queue and mark status=matched
-        foreach ($ticket['party_ids'] as $pid) {
-            $this->redisManager->zrem($queueKey, "party:{$pid}");
-            $this->redisManager->hset(self::PARTY_KEY_PREFIX.$pid, 'status', SearchStatus::Matched->value);
-        }
-
-        // Create ticket
-        $ticketId = Str::uuid()->toString();
-        $expiresAt = now()->addSeconds($this->baseTicketTtl)->unix();
-        $ticketKey = self::TICKET_KEY_PREFIX.$ticketId;
-
-        $this->redisManager->hmset($ticketKey, [
-            'ticket_id' => $ticketId,
-            'mode' => $mode,
-            'teams_json' => json_encode($ticket['teams']),     // teams = [[userIds], [userIds]] or [[]] for FFA
-            'players_json' => json_encode($ticket['players']),   // flat array of userIds
-            'party_ids_json' => json_encode($ticket['party_ids']),   // flat array of partyId
-            'expires_at' => $expiresAt,
-            'status' => TicketStatus::Pending->value,
-        ]);
-
-        // Empty sets to track responses
-        $this->redisManager->del("{$ticketKey}:accepted", "{$ticketKey}:declined");
-
-        broadcast(new TicketCreated($ticketId, $mode, $ticket['teams'], $expiresAt));
-        dispatch(new TicketTimeoutJob($ticketId))->delay(now()->addSeconds($this->baseTicketTtl));
+        return $result;
     }
 
-    public function acceptTicket(int $userId, string $ticketId): void
+    public function acceptTicket(User $user, string $ticketId, string $sessionId): void
     {
+        $this->validateSession($user->id, $sessionId);
+
         $ticketKey = self::TICKET_KEY_PREFIX.$ticketId;
-        $status = $this->redisManager->hget($ticketKey, 'status');
-        if ($status !== TicketStatus::Pending->value) {
+        $ticket = $this->redis->hgetall($ticketKey);
+
+        if (empty($ticket) || $ticket['status'] !== TicketStatus::Pending->value) {
             return;
         }
 
-        $players = json_decode($this->redisManager->hget($ticketKey, 'players_json') ?? '[]', true);
-        if (!in_array($userId, $players, true)) {
+        $now = now()->timestamp;
+        if ($now > (int) ($ticket['ready_expires_at'] ?? 0)) {
             return;
         }
 
-        $this->redisManager->sadd("{$ticketKey}:accepted", $userId);
-        broadcast(new TicketUpdated($ticketId, TicketStatus::Accepted, $userId));
+        $slots = json_decode($ticket['slots_json'] ?? '[]', true);
+        $userSlot = null;
+        foreach ($slots as $i => $slot) {
+            if ($slot['user_id'] === $user->id) {
+                $slots[$i]['status'] = SlotStatus::Accepted->value;
+                $userSlot = $slot['slot'];
+                break;
+            }
+        }
 
-        $acceptedCount = $this->redisManager->scard("{$ticketKey}:accepted");
-        if ($acceptedCount === count($players)) {
-            // everyone ready -> finalize match
-            $this->finalizeTicket($ticketId);
+        if ($userSlot === null) {
+            return;
+        }
+
+        $this->redis->sadd("{$ticketKey}:accepted", $user->id);
+        $this->redis->hset($ticketKey, 'slots_json', json_encode($slots));
+
+        $acceptedCount = (int) $this->redis->scard("{$ticketKey}:accepted");
+        $declinedCount = (int) $this->redis->scard("{$ticketKey}:declined");
+        $slotsTotal = (int) ($ticket['slots_total'] ?? count($slots));
+
+        $this->broadcastTicketUpdate($ticketId, $slots, [
+            ['slot' => $userSlot, 'status' => SlotStatus::Accepted->value],
+        ], $acceptedCount, $declinedCount);
+
+        if ($acceptedCount === $slotsTotal) {
+            $this->confirmTicket($ticketId);
         }
     }
 
-    public function declineTicket(int $userId, string $ticketId): void
+    public function declineTicket(User $user, string $ticketId, string $sessionId): void
     {
+        $this->validateSession($user->id, $sessionId);
+
         $ticketKey = self::TICKET_KEY_PREFIX.$ticketId;
-        $status = $this->redisManager->hget($ticketKey, 'status');
-        if ($status !== TicketStatus::Pending->value) {
+        $ticket = $this->redis->hgetall($ticketKey);
+
+        if (empty($ticket) || $ticket['status'] !== TicketStatus::Pending->value) {
             return;
         }
 
-        $newStatus = TicketStatus::Declined;
-        $this->redisManager->sadd("{$ticketKey}:declined", $userId);
-        $this->redisManager->hset($ticketKey, 'status', $newStatus->value);
-        broadcast(new TicketUpdated($ticketId, $newStatus, $userId));
+        $this->redis->sadd("{$ticketKey}:declined", $user->id);
+        $this->redis->hset($ticketKey, 'status', TicketStatus::Cancelled->value);
 
-        $this->returnPartiesToQueue($ticketId, penalizeUserId: $userId);
+        $this->resolveTicketDecline($ticketId, $user->id, CancelReason::Declined);
     }
 
-    public function timeoutTicket(string $ticketId): void
+    public function expireTicket(string $ticketId): void
     {
         $ticketKey = self::TICKET_KEY_PREFIX.$ticketId;
-        $status = $this->redisManager->hget($ticketKey, 'status');
-        if ($status !== TicketStatus::Pending->value) {
+        $ticket = $this->redis->hgetall($ticketKey);
+
+        if (empty($ticket) || $ticket['status'] !== TicketStatus::Pending->value) {
             return;
         }
 
-        $newStatus = TicketStatus::Timeout;
-        $this->redisManager->hset($ticketKey, 'status', $newStatus->value);
-        broadcast(new TicketUpdated($ticketId, $newStatus, null));
+        $this->redis->hset($ticketKey, 'status', TicketStatus::Expired->value);
 
-        $this->returnPartiesToQueue($ticketId);
+        $slots = json_decode($ticket['slots_json'] ?? '[]', true);
+        $acceptedUsers = $this->redis->smembers("{$ticketKey}:accepted") ?? [];
+
+        $timeoutUserId = null;
+        foreach ($slots as $slot) {
+            if (!in_array($slot['user_id'], $acceptedUsers, false)) {
+                $timeoutUserId = $slot['user_id'];
+                break;
+            }
+        }
+
+        if ($timeoutUserId) {
+            $this->resolveTicketDecline($ticketId, (int) $timeoutUserId, CancelReason::Timeout);
+        }
     }
 
-    private function finalizeTicket(string $ticketId): void
+    public function startMatch(string $ticketId): void
     {
         $ticketKey = self::TICKET_KEY_PREFIX.$ticketId;
-        $newStatus = TicketStatus::Confirmed;
-        $this->redisManager->hset($ticketKey, 'status', $newStatus->value);
+        $ticket = $this->redis->hgetall($ticketKey);
 
-        $mode = $this->redisManager->hget($ticketKey, 'mode');
-        $teams = json_decode($this->redisManager->hget($ticketKey, 'teams_json') ?? '[]', true);
-        $players = json_decode($this->redisManager->hget($ticketKey, 'players_json') ?? '[]', true);
+        if (empty($ticket) || $ticket['status'] !== TicketStatus::Confirmed->value) {
+            return;
+        }
+
+        $mode = GameMode::from($ticket['mode']);
+        $slots = json_decode($ticket['slots_json'] ?? '[]', true);
+        $groupKeys = json_decode($ticket['group_keys_json'] ?? '[]', true);
+
+        $players = array_column($slots, 'user_id');
+        $teams = $this->buildTeamsFromSlots($slots, $mode);
 
         $match = new GameMatch;
-        $match->mode = $mode;
-        $match->status = 'ready';
+        $match->mode = $mode->value;
+        $match->status = 'active';
         $match->players = $players;
         $match->teams = $teams;
         $match->save();
 
-        broadcast(new TicketUpdated($ticketId, $newStatus, null, ['match_id' => $match->id]));
+        foreach ($groupKeys as $gk) {
+            $hashKey = self::GROUP_KEY_PREFIX.$gk;
+            $this->redis->hmset($hashKey, [
+                'status' => GroupStatus::InMatch->value,
+                'match_id' => $match->id,
+                'updated_at' => now()->timestamp,
+            ]);
+        }
+
+        foreach ($slots as $slot) {
+            $user = User::find($slot['user_id']);
+            if ($user) {
+                broadcast(new MMMatchStarted(
+                    userHash: $user->getHashedId(),
+                    matchId: $match->id,
+                ));
+            }
+        }
     }
 
-    private function returnPartiesToQueue(string $ticketId, ?int $penalizeUserId = null): void
+    public function processTick(): void
+    {
+        foreach (GameMode::cases() as $mode) {
+            $this->processMode($mode);
+        }
+    }
+
+    private function getActiveSession(int $userId): ?string
+    {
+        $key = self::ACTIVE_SESSION_PREFIX.$userId;
+
+        return $this->redis->get($key);
+    }
+
+    private function confirmTicket(string $ticketId): void
     {
         $ticketKey = self::TICKET_KEY_PREFIX.$ticketId;
 
-        $mode = $this->redisManager->hget($ticketKey, 'mode');
-        $queueKey = self::QUEUE_KEYS[$mode];
+        $now = now()->timestamp;
+        $startAt = $now + self::START_DELAY_SECONDS;
 
-        $partyIds = json_decode($this->redisManager->hget($ticketKey, 'party_ids_json') ?? '[]', true);
-        if (empty($partyIds)) {
-            // fallback: no-op;
-            return;
+        $this->redis->hmset($ticketKey, [
+            'status' => TicketStatus::Confirmed->value,
+            'start_at' => $startAt,
+        ]);
+
+        $ticket = $this->redis->hgetall($ticketKey);
+        $slots = json_decode($ticket['slots_json'] ?? '[]', true);
+        $groupKeys = json_decode($ticket['group_keys_json'] ?? '[]', true);
+
+        foreach ($groupKeys as $gk) {
+            $hashKey = self::GROUP_KEY_PREFIX.$gk;
+            $this->redis->hset($hashKey, 'status', GroupStatus::Starting->value);
         }
 
-        foreach ($partyIds as $pid) {
-            $key = self::PARTY_KEY_PREFIX.$pid;
-            $hash = $this->redisManager->hgetall($key);
-            if (!$hash) {
-                continue;
+        foreach ($slots as $slot) {
+            $user = User::find($slot['user_id']);
+            if ($user) {
+                broadcast(new MMStarting(
+                    userHash: $user->getHashedId(),
+                    ticketId: $ticketId,
+                    startAt: $startAt,
+                ));
             }
+        }
 
-            $status = SearchStatus::Searching;
+        dispatch(new MatchStartJob($ticketId))->delay(now()->addSeconds(self::START_DELAY_SECONDS));
+    }
 
-            // minor penalty: increase widen to ease re-match (or small delay if declined)
-            $this->redisManager->hmset($key, [
-                'status' => $status->value,
-                'enqueued_at' => now()->timestamp,
-            ]);
-            $this->redisManager->zadd($queueKey, (int) $hash['base_mmr'], "party:{$pid}");
-            broadcast(new SearchUpdated((int) $pid, $status));
+    private function broadcastTicketUpdate(string $ticketId, array $slots, array $updates, int $acceptedCount, int $declinedCount): void
+    {
+        foreach ($slots as $slot) {
+            $user = User::find($slot['user_id']);
+            if ($user) {
+                broadcast(new MMTicketUpdated(
+                    userHash: $user->getHashedId(),
+                    ticketId: $ticketId,
+                    updates: $updates,
+                    acceptedCount: $acceptedCount,
+                    declinedCount: $declinedCount,
+                ));
+            }
         }
     }
 
-    private function assertMode(string $mode): void
+    private function resolveTicketDecline(string $ticketId, int $declinedUserId, CancelReason $reason): void
     {
-        if (!in_array($mode, self::MODES, true)) {
-            throw new \InvalidArgumentException("Unsupported mode: {$mode}");
+        $ticketKey = self::TICKET_KEY_PREFIX.$ticketId;
+        $ticket = $this->redis->hgetall($ticketKey);
+
+        if (empty($ticket)) {
+            return;
         }
+
+        $mode = GameMode::from($ticket['mode']);
+        $slots = json_decode($ticket['slots_json'] ?? '[]', true);
+        $groupKeys = json_decode($ticket['group_keys_json'] ?? '[]', true);
+
+        $declinedGroupKey = null;
+        foreach ($slots as $slot) {
+            if ($slot['user_id'] === $declinedUserId) {
+                $declinedGroupKey = $slot['group_key'];
+                break;
+            }
+        }
+
+        $stoppedGroupKeys = [];
+        $returnGroupKeys = [];
+
+        if ($declinedGroupKey !== null) {
+            if (str_starts_with($declinedGroupKey, 'u:')) {
+                $stoppedGroupKeys[] = $declinedGroupKey;
+            } else {
+                $stoppedGroupKeys[] = $declinedGroupKey;
+            }
+        }
+
+        foreach ($groupKeys as $gk) {
+            if (!in_array($gk, $stoppedGroupKeys, true)) {
+                $returnGroupKeys[] = $gk;
+            }
+        }
+
+        foreach ($stoppedGroupKeys as $gk) {
+            $hashKey = self::GROUP_KEY_PREFIX.$gk;
+            $this->redis->del($hashKey);
+
+            $userId = $this->extractUserIdFromGroupKey($gk);
+            if ($userId) {
+                $this->clearActiveSession($userId);
+                $user = User::find($userId);
+                if ($user) {
+                    broadcast(new MMTicketExpired(
+                        userHash: $user->getHashedId(),
+                        ticketId: $ticketId,
+                        reason: $reason->value,
+                        backToSearch: false,
+                    ));
+                }
+            }
+        }
+
+        $now = now()->timestamp;
+        $queueKey = self::QUEUE_KEYS[$mode->value];
+
+        foreach ($returnGroupKeys as $gk) {
+            $hashKey = self::GROUP_KEY_PREFIX.$gk;
+            $hash = $this->redis->hgetall($hashKey);
+
+            if (empty($hash)) {
+                continue;
+            }
+
+            $mmr = (int) ($hash['mmr'] ?? 0);
+
+            $this->redis->hmset($hashKey, [
+                'status' => GroupStatus::Searching->value,
+                'search_started_at' => $now,
+                'search_expires_at' => $now + self::SEARCH_TIMEOUT_SECONDS,
+                'ticket_id' => '',
+                'updated_at' => $now,
+            ]);
+
+            $this->redis->zadd($queueKey, [$gk => $mmr]);
+
+            $members = json_decode($hash['members_json'] ?? '[]', true);
+            foreach ($members as $member) {
+                $user = User::find($member['user_id']);
+                if ($user) {
+                    broadcast(new MMTicketExpired(
+                        userHash: $user->getHashedId(),
+                        ticketId: $ticketId,
+                        reason: $reason->value,
+                        backToSearch: true,
+                    ));
+
+                    broadcast(new MMSearchUpdated(
+                        userHash: $user->getHashedId(),
+                        state: GroupStatus::Searching,
+                        mode: $mode->value,
+                        searchStartedAt: $now,
+                        searchExpiresAt: $now + self::SEARCH_TIMEOUT_SECONDS,
+                    ));
+                }
+            }
+        }
+    }
+
+    private function extractUserIdFromGroupKey(string $groupKey): ?int
+    {
+        if (str_starts_with($groupKey, 'u:')) {
+            return (int) substr($groupKey, 2);
+        }
+
+        return null;
+    }
+
+    private function buildTeamsFromSlots(array $slots, GameMode $mode): array
+    {
+        if ($mode === GameMode::FreeForAll4) {
+            return [array_column($slots, 'user_id')];
+        }
+
+        $teams = [];
+        foreach ($slots as $slot) {
+            $teamId = $slot['team_id'];
+            if (!isset($teams[$teamId])) {
+                $teams[$teamId] = [];
+            }
+            $teams[$teamId][] = $slot['user_id'];
+        }
+
+        return array_values($teams);
+    }
+
+    private function processMode(GameMode $mode): void
+    {
+        $queueKey = self::QUEUE_KEYS[$mode->value];
+
+        $candidates = $this->redis->zrange($queueKey, 0, 99, true);
+
+        if (empty($candidates)) {
+            return;
+        }
+
+        $groupSnapshots = [];
+        $now = now()->timestamp;
+
+        foreach ($candidates as $groupKey => $score) {
+            $hashKey = self::GROUP_KEY_PREFIX.$groupKey;
+            $hash = $this->redis->hgetall($hashKey);
+
+            if (empty($hash) || ($hash['status'] ?? '') !== GroupStatus::Searching->value) {
+                $this->redis->zrem($queueKey, $groupKey);
+
+                continue;
+            }
+
+            $expiresAt = (int) ($hash['search_expires_at'] ?? 0);
+            if ($now > $expiresAt) {
+                $this->expireSearch($groupKey, $hash);
+                $this->redis->zrem($queueKey, $groupKey);
+
+                continue;
+            }
+
+            $enq = (int) ($hash['search_started_at'] ?? $now);
+            $elapsed = max(0, $now - $enq);
+            $widenSteps = intdiv($elapsed, $this->widenStepSeconds);
+
+            $base = (int) ($hash['mmr'] ?? 0);
+            $hash['group_key'] = $groupKey;
+            $hash['effective_min'] = $base - $this->widenPerStep - ($widenSteps * $this->widenPerStep);
+            $hash['effective_max'] = $base + $this->widenPerStep + ($widenSteps * $this->widenPerStep);
+            $hash['base_mmr'] = $base;
+            $hash['members'] = json_decode($hash['members_json'] ?? '[]', true);
+            $hash['enqueued_at'] = $enq;
+
+            $groupSnapshots[$groupKey] = $hash;
+        }
+
+        if (empty($groupSnapshots)) {
+            return;
+        }
+
+        $match = $this->groupAssembler->assemble($mode, $groupSnapshots);
+        if (!$match) {
+            return;
+        }
+
+        $this->createTicket($mode, $match, $queueKey);
+    }
+
+    private function expireSearch(string $groupKey, array $hash): void
+    {
+        $hashKey = self::GROUP_KEY_PREFIX.$groupKey;
+        $this->redis->del($hashKey);
+
+        $members = json_decode($hash['members_json'] ?? '[]', true);
+        foreach ($members as $member) {
+            $this->clearActiveSession($member['user_id']);
+
+            $user = User::find($member['user_id']);
+            if ($user) {
+                broadcast(new MMSearchUpdated(
+                    userHash: $user->getHashedId(),
+                    state: GroupStatus::Idle,
+                    reason: CancelReason::SearchTimeout->value,
+                ));
+            }
+        }
+    }
+
+    private function createTicket(GameMode $mode, array $match, string $queueKey): void
+    {
+        $ticketId = Str::uuid()->toString();
+        $ticketKey = self::TICKET_KEY_PREFIX.$ticketId;
+        $now = now()->timestamp;
+        $readyExpiresAt = $now + self::READY_TIMEOUT_SECONDS;
+
+        $slots = $this->buildSlotsFromMatch($match, $mode);
+        $groupKeys = $match['group_ids'];
+
+        $this->redis->hmset($ticketKey, [
+            'ticket_id' => $ticketId,
+            'mode' => $mode->value,
+            'status' => TicketStatus::Pending->value,
+            'created_at' => $now,
+            'ready_expires_at' => $readyExpiresAt,
+            'start_at' => 0,
+            'slots_total' => count($slots),
+            'slots_json' => json_encode($slots),
+            'group_keys_json' => json_encode($groupKeys),
+        ]);
+
+        $this->redis->del("{$ticketKey}:accepted", "{$ticketKey}:declined");
+
+        foreach ($groupKeys as $gk) {
+            $this->redis->zrem($queueKey, $gk);
+
+            $hashKey = self::GROUP_KEY_PREFIX.$gk;
+            $this->redis->hmset($hashKey, [
+                'status' => GroupStatus::Proposed->value,
+                'ticket_id' => $ticketId,
+                'updated_at' => $now,
+            ]);
+        }
+
+        foreach ($slots as $slot) {
+            $user = User::find($slot['user_id']);
+            if ($user) {
+                broadcast(new MMSearchUpdated(
+                    userHash: $user->getHashedId(),
+                    state: GroupStatus::Proposed,
+                    mode: $mode->value,
+                ));
+
+                $slotsForBroadcast = array_map(fn ($s) => [
+                    'slot' => $s['slot'],
+                    'status' => $s['status'],
+                ], $slots);
+
+                broadcast(new MMTicketCreated(
+                    userHash: $user->getHashedId(),
+                    ticketId: $ticketId,
+                    mode: $mode->value,
+                    readyExpiresAt: $readyExpiresAt,
+                    slotsTotal: count($slots),
+                    slots: $slotsForBroadcast,
+                    yourSlot: $slot['slot'],
+                ));
+            }
+        }
+
+        dispatch(new TicketExpiryJob($ticketId))->delay(now()->addSeconds(self::READY_TIMEOUT_SECONDS));
+    }
+
+    private function buildSlotsFromMatch(array $match, GameMode $mode): array
+    {
+        $slots = [];
+        $slotNum = 1;
+
+        $teams = $match['teams'];
+        $groupIds = $match['group_ids'];
+
+        $groupKeyByUserId = [];
+        foreach ($groupIds as $gk) {
+            $hashKey = self::GROUP_KEY_PREFIX.$gk;
+            $hash = $this->redis->hgetall($hashKey);
+            $members = json_decode($hash['members_json'] ?? '[]', true);
+            foreach ($members as $m) {
+                $groupKeyByUserId[$m['user_id']] = $gk;
+            }
+        }
+
+        if ($mode === GameMode::FreeForAll4) {
+            foreach ($teams[0] as $userId) {
+                $slots[] = [
+                    'slot' => $slotNum,
+                    'group_key' => $groupKeyByUserId[$userId] ?? '',
+                    'user_id' => $userId,
+                    'team_id' => (string) $slotNum,
+                    'status' => SlotStatus::Pending->value,
+                ];
+                $slotNum++;
+            }
+        } else {
+            $teamLabels = ['A', 'B'];
+            foreach ($teams as $teamIndex => $teamPlayers) {
+                $teamId = $teamLabels[$teamIndex] ?? (string) ($teamIndex + 1);
+                foreach ($teamPlayers as $userId) {
+                    $slots[] = [
+                        'slot' => $slotNum,
+                        'group_key' => $groupKeyByUserId[$userId] ?? '',
+                        'user_id' => $userId,
+                        'team_id' => $teamId,
+                        'status' => SlotStatus::Pending->value,
+                    ];
+                    $slotNum++;
+                }
+            }
+        }
+
+        return $slots;
     }
 }

@@ -24,6 +24,26 @@ services:
       - db
       - redis
 
+  horizon:
+    build:
+      context: services/workspace
+    volumes:
+      - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}
+    depends_on:
+      - db
+      - redis
+    command: env php artisan horizon
+
+  matchmaker:
+    build:
+      context: services/workspace
+    volumes:
+      - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}
+    depends_on:
+      - db
+      - redis
+    command: env php artisan app:match-making:daemon
+
   frontend:
     build:
       context: services/frontend

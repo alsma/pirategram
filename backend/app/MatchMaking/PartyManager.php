@@ -238,12 +238,12 @@ class PartyManager
     public function syncRedisParty(int $partyId): void
     {
         $party = Party::findOrFail($partyId);
-        $members = PartyMember::with('user.profile')  // assume profile has MMR
+        $members = PartyMember::with('user')
             ->where('party_id', $partyId)
             ->get()
             ->map(fn ($m) => [
                 'id' => $m->user_id,
-                'mmr' => (int) ($m->user->profile->mmr ?? 1200),
+                'mmr' => (int) ($m->user->mmr ?? 0),
             ])->values()->all();
 
         $avgMmr = (int) round(collect($members)->avg('mmr') ?? 1200);

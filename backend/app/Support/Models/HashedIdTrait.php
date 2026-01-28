@@ -14,6 +14,11 @@ trait HashedIdTrait
         return Hashids::encode($key);
     }
 
+    public static function hashedIdToKey(string $hashedId): int
+    {
+        return Hashids::decode($hashedId)[0];
+    }
+
     public function getHashedId(): string
     {
         return Hashids::encode($this->getKey());

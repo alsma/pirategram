@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\User\Models;
 
+use App\Support\Models\HashedIdTrait;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -11,7 +12,7 @@ use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasFactory, HashedIdTrait, Notifiable;
 
     protected $hidden = [
         'password',

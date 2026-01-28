@@ -1,19 +1,108 @@
 "use client"
 
+import { useEffect } from 'react'
+import { echo } from '@laravel/echo-react'
+
 import { useAuthStore } from "@/store/context/auth"
-import { usePartyStore } from "@/store/party-store"
+import { usePartyStore, selectQueueStatus } from "@/store/party-store"
+import { GroupStatus } from '@/lib/constants/matchmaking.js'
 import FriendsSidebar from "@/components/social/friends-sidebar"
 import PartyBar from "@/components/social/party-bar"
 import GameModes from "@/components/game/game-modes"
 import MatchmakingModal from "@/components/game/matchmaking-modal"
 import ReadyCheckModal from "@/components/game/ready-check-modal"
+import { toast } from 'sonner'
 
 export default function PlayPage() {
-  const isAuthenticated = useAuthStore(s => s.isAuthenticated)
-  const { queueStatus } = usePartyStore()
+  const userHash = useAuthStore(s => s.user.hash)
+  const {
+    handleSearchUpdated,
+    handleTicketCreated,
+    handleTicketUpdated,
+    handleTicketExpired,
+    handleStarting,
+    handleMatchStarted,
+    restoreState,
+  } = usePartyStore()
+  const queueStatus = usePartyStore(selectQueueStatus)
+
+  // Restore state on mount
+  useEffect(() => {
+    restoreState()
+  }, [restoreState])
+
+  useEffect(() => {
+    if (!userHash) return
+
+    const channel = echo().private(`user.${userHash}`)
+
+    // Listen to all MM events
+    channel
+      .listen('.mm.search.updated', (e) => {
+        handleSearchUpdated(e)
+
+        // Show toast for certain state changes
+        if (e.state === GroupStatus.Idle && e.reason === 'USER_CANCELLED') {
+          toast.info('Search cancelled')
+        } else if (e.state === GroupStatus.Idle && e.reason === 'SEARCH_TIMEOUT') {
+          toast.error('Search timed out - no match found')
+        } else if (e.state === GroupStatus.Searching) {
+          toast.success('Searching for match...')
+        }
+      })
+      .listen('.mm.ticket.created', (e) => {
+        handleTicketCreated(e)
+        toast.success('Match found!')
+      })
+      .listen('.mm.ticket.updated', (e) => {
+        handleTicketUpdated(e)
+      })
+      .listen('.mm.ticket.expired', (e) => {
+        handleTicketExpired(e)
+
+        if (e.reason === 'DECLINED') {
+          if (e.backToSearch) {
+            toast.warning('Player declined - returning to queue')
+          } else {
+            toast.error('You declined the match')
+          }
+        } else if (e.reason === 'TIMEOUT') {
+          if (e.backToSearch) {
+            toast.warning('Player timed out - returning to queue')
+          } else {
+            toast.error('You failed to accept in time')
+          }
+        }
+      })
+      .listen('.mm.starting', (e) => {
+        handleStarting(e)
+        toast.success('All players ready - match starting!')
+      })
+      .listen('.mm.match.started', (e) => {
+        handleMatchStarted(e)
+        toast.success(`Match ${e.matchId} started!`)
+      })
+
+    return () => {
+      channel.stopListening('.mm.search.updated')
+      channel.stopListening('.mm.ticket.created')
+      channel.stopListening('.mm.ticket.updated')
+      channel.stopListening('.mm.ticket.expired')
+      channel.stopListening('.mm.starting')
+      channel.stopListening('.mm.match.started')
+    }
+  }, [
+    userHash,
+    handleSearchUpdated,
+    handleTicketCreated,
+    handleTicketUpdated,
+    handleTicketExpired,
+    handleStarting,
+    handleMatchStarted,
+  ])
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex overflow-hidden" style={{ height: 'calc(100vh - 65px)' }}>
       {/* Friends Sidebar - Hidden on mobile */}
       <div className="hidden md:block w-80 border-r border-ember/20 panel-texture">
         <FriendsSidebar />

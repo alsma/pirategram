@@ -4,30 +4,32 @@ declare(strict_types=1);
 
 namespace App\MatchMaking\Broadcasting;
 
-use App\MatchMaking\ValueObjects\SearchStatus;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 
-readonly class SearchUpdated implements ShouldBroadcastNow
+readonly class MMStarting implements ShouldBroadcastNow
 {
     public function __construct(
-        public int $partyId,
-        public SearchStatus $status,
-        public array $payload = []
+        public string $userHash,
+        public string $ticketId,
+        public int $startAt,
     ) {}
 
     public function broadcastOn(): PrivateChannel
     {
-        return new PrivateChannel("party.{$this->partyId}");
+        return new PrivateChannel("user.{$this->userHash}");
     }
 
     public function broadcastAs(): string
     {
-        return 'search.updated';
+        return 'mm.starting';
     }
 
     public function broadcastWith(): array
     {
-        return ['status' => $this->status->value, 'data' => $this->payload];
+        return [
+            'ticketId' => $this->ticketId,
+            'startAt' => $this->startAt,
+        ];
     }
 }

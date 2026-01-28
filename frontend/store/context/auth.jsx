@@ -4,7 +4,6 @@ import { initAuthStore } from '@/store/auth-store'
 
 const AuthStoreContext = createContext(null)
 
-/* <AuthProvider initialState={...}> … */
 export const AuthProvider = ({ children, initialState }) => {
   // keep the same store instance for this provider’s lifetime
   const storeRef = useRef()
@@ -21,6 +20,7 @@ export const AuthProvider = ({ children, initialState }) => {
 export const useAuthStore = (selector, equalityFn) => {
   const store = useContext(AuthStoreContext)
   if (!store)
-    throw new Error('❌ useAuthStore must be used inside <AuthProvider>')
+    console.error(new Error('❌ useAuthStore must be used inside <AuthProvider>'))
+
   return useZustandStore(store, selector, equalityFn)
 }

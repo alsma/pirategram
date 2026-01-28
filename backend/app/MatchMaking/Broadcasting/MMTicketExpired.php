@@ -4,36 +4,34 @@ declare(strict_types=1);
 
 namespace App\MatchMaking\Broadcasting;
 
-use App\MatchMaking\ValueObjects\TicketStatus;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 
-readonly class TicketUpdated implements ShouldBroadcastNow
+readonly class MMTicketExpired implements ShouldBroadcastNow
 {
     public function __construct(
+        public string $userHash,
         public string $ticketId,
-        public TicketStatus $status,
-        public ?int $userId = null,
-        public array $extra = []
+        public string $reason,
+        public bool $backToSearch,
     ) {}
 
     public function broadcastOn(): PrivateChannel
     {
-        return new PrivateChannel("ticket.{$this->ticketId}");
+        return new PrivateChannel("user.{$this->userHash}");
     }
 
     public function broadcastAs(): string
     {
-        return 'ticket.updated';
+        return 'mm.ticket.expired';
     }
 
     public function broadcastWith(): array
     {
         return [
             'ticketId' => $this->ticketId,
-            'status' => $this->status->value,
-            'userId' => $this->userId,
-            'extra' => $this->extra,
+            'reason' => $this->reason,
+            'backToSearch' => $this->backToSearch,
         ];
     }
 }

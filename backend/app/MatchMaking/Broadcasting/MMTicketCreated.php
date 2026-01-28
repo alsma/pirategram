@@ -7,23 +7,26 @@ namespace App\MatchMaking\Broadcasting;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 
-readonly class TicketCreated implements ShouldBroadcastNow
+readonly class MMTicketCreated implements ShouldBroadcastNow
 {
     public function __construct(
+        public string $userHash,
         public string $ticketId,
         public string $mode,
-        public array $teams,
-        public int $expiresAt
+        public int $readyExpiresAt,
+        public int $slotsTotal,
+        public array $slots,
+        public int $yourSlot,
     ) {}
 
     public function broadcastOn(): PrivateChannel
     {
-        return new PrivateChannel("ticket.{$this->ticketId}");
+        return new PrivateChannel("user.{$this->userHash}");
     }
 
     public function broadcastAs(): string
     {
-        return 'ticket.created';
+        return 'mm.ticket.created';
     }
 
     public function broadcastWith(): array
@@ -31,8 +34,10 @@ readonly class TicketCreated implements ShouldBroadcastNow
         return [
             'ticketId' => $this->ticketId,
             'mode' => $this->mode,
-            'teams' => $this->teams,
-            'expiresAt' => $this->expiresAt,
+            'readyExpiresAt' => $this->readyExpiresAt,
+            'slotsTotal' => $this->slotsTotal,
+            'slots' => $this->slots,
+            'yourSlot' => $this->yourSlot,
         ];
     }
 }

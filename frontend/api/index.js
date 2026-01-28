@@ -8,7 +8,7 @@ if (import.meta.env.SSR) {
   appBaseUrl = import.meta.env.API_BASE_URL
 }
 
-export async function sendRequest(url, method, data = undefined, headers = {}) {
+export async function sendRequest(url, method, data = undefined, headers = {}, retryable = true) {
   headers['Accept'] = 'application/json'
 
   let body = undefined
@@ -39,7 +39,26 @@ export async function sendRequest(url, method, data = undefined, headers = {}) {
   })
 
   if (!response.ok) {
-    throw new Error(` Request failed. URL: ${fullUrl} STATUS: ${response.status}`)
+    if (response.status === 419) {
+      expireXSRFToken()
+
+      if (retryable) {
+        return sendRequest(url, method, data, headers, false)
+      }
+    }
+
+    // Try to get error details from response
+    let errorDetails = null
+    try {
+      errorDetails = await response.json()
+    } catch (e) {
+      // Response might not be JSON
+    }
+
+    const error = new Error(` Request failed. URL: ${fullUrl} STATUS: ${response.status}`)
+    error.status = response.status
+    error.details = errorDetails
+    throw error
   }
 
   const result = await response.json()
@@ -49,8 +68,8 @@ export async function sendRequest(url, method, data = undefined, headers = {}) {
   return result
 }
 
-export async function apiXSRFRequest() {
-  if (Cookies.get('XSRF-TOKEN')) {
+export async function apiXSRFRequest(force = false) {
+  if (Cookies.get('XSRF-TOKEN') && !force) {
     return
   }
 
@@ -59,4 +78,8 @@ export async function apiXSRFRequest() {
     headers: {},
     credentials: 'same-origin',
   })
+}
+
+export function expireXSRFToken() {
+  Cookies.remove('XSRF-TOKEN')
 }

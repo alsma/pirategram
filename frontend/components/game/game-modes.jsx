@@ -1,11 +1,13 @@
 import { useState } from "react"
 import { usePartyStore } from "@/store/party-store"
+import { GameMode } from '@/lib/constants/matchmaking.js'
 import { Swords, Users, Crown, Info } from "lucide-react"
 import { toast } from "sonner"
+import { useToastStore } from '@/store/toast-store.js'
 
 const gameModes = [
   {
-    id: "solo-1v1",
+    id: GameMode.OneOnOne,
     title: "Solo 1v1",
     description: "Challenge another player in a strategic duel",
     icon: Swords,
@@ -14,7 +16,7 @@ const gameModes = [
     color: "from-ember to-ember-dark",
   },
   {
-    id: "team-2v2",
+    id: GameMode.TwoVsTwo,
     title: "Team 2v2",
     description: "Team up with a friend against two opponents",
     icon: Users,
@@ -23,7 +25,7 @@ const gameModes = [
     color: "from-burnt to-burnt-dark",
   },
   {
-    id: "ffa-4",
+    id: GameMode.FreeForAll4,
     title: "Free-For-All",
     description: "Every player for themselves in a 4-player battle",
     icon: Crown,
@@ -36,13 +38,14 @@ const gameModes = [
 export default function GameModes() {
   const { party, startQueue } = usePartyStore()
   const [selectedMode, setSelectedMode] = useState(null)
+  const { addSimpleSuccessToast, addSimpleErrorToast } = useToastStore()
 
   const isEligible = (mode) => {
     const partySize = party.length
 
-    if (mode.id === "solo-1v1" && partySize === 1) return true
-    if (mode.id === "team-2v2" && (partySize === 1 || partySize === 2 || partySize === 4)) return true
-    if (mode.id === "ffa-4" && partySize >= 1 && partySize <= 4) return true
+    if (mode.id === GameMode.OneOnOne && partySize === 1) return true
+    if (mode.id === GameMode.TwoVsTwo && (partySize === 1 || partySize === 2 || partySize === 4)) return true
+    if (mode.id === GameMode.FreeForAll4 && partySize >= 1 && partySize <= 4) return true
 
     return false
   }
@@ -53,8 +56,8 @@ export default function GameModes() {
 
   const handleStartQueue = () => {
     if (selectedMode) {
-      startQueue()
-      toast.info(`Searching for a ${gameModes.find((m) => m.id === selectedMode)?.title} match...`)
+      startQueue(selectedMode)
+      addSimpleSuccessToast(`Searching for a ${gameModes.find((m) => m.id === selectedMode)?.title} match...`)
     }
   }
 
@@ -105,7 +108,7 @@ export default function GameModes() {
                   </div>
                 )}
 
-                <div className="flex justify-between items-center mt-4">
+                <div className="flex justify-between items-start mt-4">
                   <div className="text-sm text-gray-400">
                     {mode.id === "solo-1v1" && "2 players"}
                     {mode.id === "team-2v2" && "2v2 teams"}

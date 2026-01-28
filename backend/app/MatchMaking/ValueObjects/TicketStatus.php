@@ -7,8 +7,7 @@ namespace App\MatchMaking\ValueObjects;
 enum TicketStatus: string
 {
     case Pending = 'pending';
-    case Accepted = 'accepted';
-    case Declined = 'declined';
     case Confirmed = 'confirmed';
-    case Timeout = 'timeout';
+    case Expired = 'expired';
+    case Cancelled = 'cancelled';
 }

@@ -13,6 +13,7 @@ class UserResource extends JsonResource
     public function toArray($request): array
     {
         return [
+            'hash' => $this->resource->getHashedId(),
             'username' => $this->resource->username,
             'registered' => $this->resource->created_at->timestamp,
         ];

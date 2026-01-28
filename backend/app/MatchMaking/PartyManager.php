@@ -7,6 +7,7 @@ namespace App\MatchMaking;
 use App\MatchMaking\Broadcasting\PartyUpdated;
 use App\MatchMaking\Models\Party;
 use App\MatchMaking\Models\PartyMember;
+use App\MatchMaking\Support\MatchMakingRedisKeys;
 use App\MatchMaking\ValueObjects\SearchStatus;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
@@ -57,7 +58,7 @@ class PartyManager
 
             // Cleanup Redis
             Redis::del($this->rkParty($party->id));
-            Redis::zrem(MatchMakingManager::QUEUE_KEYS[$party->mode], "party:{$party->id}");
+            Redis::zrem(MatchMakingRedisKeys::QUEUE_KEYS[$party->mode], "party:{$party->id}");
 
             broadcast(new PartyUpdated($party->id, 'disbanded'));
         });

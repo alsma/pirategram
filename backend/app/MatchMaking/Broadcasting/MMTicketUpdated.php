@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\MatchMaking\Broadcasting;
 
+use App\MatchMaking\Data\MatchMakingTicketUpdatedDTO;
+use App\MatchMaking\Http\Resources\MatchMakingTicketUpdatedResource;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 
@@ -11,10 +13,7 @@ readonly class MMTicketUpdated implements ShouldBroadcastNow
 {
     public function __construct(
         public string $userHash,
-        public string $ticketId,
-        public array $updates,
-        public int $acceptedCount,
-        public int $declinedCount,
+        public MatchMakingTicketUpdatedDTO $payload,
     ) {}
 
     public function broadcastOn(): PrivateChannel
@@ -29,11 +28,6 @@ readonly class MMTicketUpdated implements ShouldBroadcastNow
 
     public function broadcastWith(): array
     {
-        return [
-            'ticketId' => $this->ticketId,
-            'updates' => $this->updates,
-            'acceptedCount' => $this->acceptedCount,
-            'declinedCount' => $this->declinedCount,
-        ];
+        return MatchMakingTicketUpdatedResource::make($this->payload)->resolve();
     }
 }

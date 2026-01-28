@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\MatchMaking\Broadcasting;
 
+use App\MatchMaking\Data\MatchMakingTicketExpiredDTO;
+use App\MatchMaking\Http\Resources\MatchMakingTicketExpiredResource;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 
@@ -11,9 +13,7 @@ readonly class MMTicketExpired implements ShouldBroadcastNow
 {
     public function __construct(
         public string $userHash,
-        public string $ticketId,
-        public string $reason,
-        public bool $backToSearch,
+        public MatchMakingTicketExpiredDTO $payload,
     ) {}
 
     public function broadcastOn(): PrivateChannel
@@ -28,10 +28,6 @@ readonly class MMTicketExpired implements ShouldBroadcastNow
 
     public function broadcastWith(): array
     {
-        return [
-            'ticketId' => $this->ticketId,
-            'reason' => $this->reason,
-            'backToSearch' => $this->backToSearch,
-        ];
+        return MatchMakingTicketExpiredResource::make($this->payload)->resolve();
     }
 }

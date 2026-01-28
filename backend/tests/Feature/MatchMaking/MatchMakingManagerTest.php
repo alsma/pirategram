@@ -13,8 +13,11 @@ use App\MatchMaking\Jobs\MatchStartJob;
 use App\MatchMaking\Jobs\TicketExpiryJob;
 use App\MatchMaking\MatchMakingManager;
 use App\MatchMaking\Models\GameMatch;
+use App\MatchMaking\Support\MatchMakingRedisKeys;
+use App\MatchMaking\ValueObjects\CancelReason;
 use App\MatchMaking\ValueObjects\GameMode;
 use App\MatchMaking\ValueObjects\GroupStatus;
+use App\MatchMaking\ValueObjects\TicketStatus;
 use App\User\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Event;
@@ -46,10 +49,10 @@ class MatchMakingManagerTest extends TestCase
 
         $result = $this->mm->startSearch($user, GameMode::OneOnOne, $sessionId);
 
-        $this->assertSame(GroupStatus::Searching->value, $result['state']);
-        $this->assertSame(GameMode::OneOnOne->value, $result['mode']);
-        $this->assertArrayHasKey('searchStartedAt', $result);
-        $this->assertArrayHasKey('searchExpiresAt', $result);
+        $this->assertSame(GroupStatus::Searching->value, $result->state);
+        $this->assertSame(GameMode::OneOnOne->value, $result->mode);
+        $this->assertNotNull($result->searchStartedAt);
+        $this->assertNotNull($result->searchExpiresAt);
 
         // Check queue
         $members = $this->queueMembers(GameMode::OneOnOne->value);
@@ -57,14 +60,14 @@ class MatchMakingManagerTest extends TestCase
 
         // Check group hash
         $groupKey = "u:{$user->id}";
-        $hashKey = MatchMakingManager::GROUP_KEY_PREFIX.$groupKey;
+        $hashKey = MatchMakingRedisKeys::GROUP_KEY_PREFIX.$groupKey;
         $status = Redis::hget($hashKey, 'status');
         $this->assertSame(GroupStatus::Searching->value, $status);
 
         // Check broadcast
         Event::assertDispatched(MMSearchUpdated::class, function (MMSearchUpdated $e) use ($user) {
             return $e->userHash === $user->getHashedId()
-                && $e->state === GroupStatus::Searching;
+                && $e->payload->state === GroupStatus::Searching->value;
         });
     }
 
@@ -82,15 +85,42 @@ class MatchMakingManagerTest extends TestCase
 
         // Group hash should be deleted
         $groupKey = "u:{$user->id}";
-        $hashKey = MatchMakingManager::GROUP_KEY_PREFIX.$groupKey;
+        $hashKey = MatchMakingRedisKeys::GROUP_KEY_PREFIX.$groupKey;
         $hash = Redis::hgetall($hashKey);
         $this->assertEmpty($hash);
 
         // Check broadcast
         Event::assertDispatched(MMSearchUpdated::class, function (MMSearchUpdated $e) use ($user) {
             return $e->userHash === $user->getHashedId()
-                && $e->state === GroupStatus::Idle
-                && $e->reason === 'USER_CANCELLED';
+                && $e->payload->state === GroupStatus::Idle->value
+                && $e->payload->reason === CancelReason::UserCancelled->value;
+        });
+    }
+
+    public function test_cancel_search_from_ticket_proposed_marks_user_cancelled(): void
+    {
+        $user1 = User::factory()->create(['mmr' => 1400]);
+        $user2 = User::factory()->create(['mmr' => 1410]);
+        $session1 = Str::uuid()->toString();
+        $session2 = Str::uuid()->toString();
+
+        $this->mm->startSearch($user1, GameMode::OneOnOne, $session1);
+        $this->mm->startSearch($user2, GameMode::OneOnOne, $session2);
+        $this->mm->processTick();
+
+        Event::fake();
+        $this->mm->cancelSearch($user1, $session1);
+
+        Event::assertDispatched(MMTicketExpired::class, function (MMTicketExpired $e) use ($user1) {
+            return $e->userHash === $user1->getHashedId()
+                && $e->payload->reason === CancelReason::UserCancelled->value
+                && $e->payload->backToSearch === false;
+        });
+
+        Event::assertDispatched(MMTicketExpired::class, function (MMTicketExpired $e) use ($user2) {
+            return $e->userHash === $user2->getHashedId()
+                && $e->payload->reason === CancelReason::UserCancelled->value
+                && $e->payload->backToSearch === true;
         });
     }
 
@@ -100,7 +130,7 @@ class MatchMakingManagerTest extends TestCase
 
         $state = $this->mm->getState($user);
 
-        $this->assertSame(GroupStatus::Idle->value, $state['state']);
+        $this->assertSame(GroupStatus::Idle->value, $state->state);
     }
 
     public function test_get_state_returns_searching_when_in_queue(): void
@@ -112,10 +142,10 @@ class MatchMakingManagerTest extends TestCase
 
         $state = $this->mm->getState($user);
 
-        $this->assertSame(GroupStatus::Searching->value, $state['state']);
-        $this->assertSame(GameMode::OneOnOne->value, $state['mode']);
-        $this->assertArrayHasKey('searchStartedAt', $state);
-        $this->assertArrayHasKey('searchExpiresAt', $state);
+        $this->assertSame(GroupStatus::Searching->value, $state->state);
+        $this->assertSame(GameMode::OneOnOne->value, $state->mode);
+        $this->assertNotNull($state->searchStartedAt);
+        $this->assertNotNull($state->searchExpiresAt);
     }
 
     public function test_process_tick_forms_1v1_ticket_and_schedules_expiry(): void
@@ -133,12 +163,12 @@ class MatchMakingManagerTest extends TestCase
 
         // Ticket created event
         Event::assertDispatched(MMTicketCreated::class, function (MMTicketCreated $e) {
-            return $e->mode === GameMode::OneOnOne->value && $e->slotsTotal === 2;
+            return $e->payload->mode === GameMode::OneOnOne->value && $e->payload->slotsTotal === 2;
         });
 
         // Groups should be in proposed state
-        $this->assertSame(GroupStatus::Proposed->value, Redis::hget(MatchMakingManager::GROUP_KEY_PREFIX."u:{$user1->id}", 'status'));
-        $this->assertSame(GroupStatus::Proposed->value, Redis::hget(MatchMakingManager::GROUP_KEY_PREFIX."u:{$user2->id}", 'status'));
+        $this->assertSame(GroupStatus::Proposed->value, Redis::hget(MatchMakingRedisKeys::GROUP_KEY_PREFIX."u:{$user1->id}", 'status'));
+        $this->assertSame(GroupStatus::Proposed->value, Redis::hget(MatchMakingRedisKeys::GROUP_KEY_PREFIX."u:{$user2->id}", 'status'));
 
         // Expiry job scheduled
         Queue::assertPushed(TicketExpiryJob::class);
@@ -165,7 +195,7 @@ class MatchMakingManagerTest extends TestCase
 
         // Starting broadcast sent
         Event::assertDispatched(MMStarting::class, function (MMStarting $e) use ($ticketId) {
-            return $e->ticketId === $ticketId;
+            return $e->payload->ticketId === $ticketId;
         });
 
         // Match start job scheduled
@@ -174,8 +204,8 @@ class MatchMakingManagerTest extends TestCase
         });
 
         // Groups should be in starting state
-        $this->assertSame(GroupStatus::Starting->value, Redis::hget(MatchMakingManager::GROUP_KEY_PREFIX."u:{$user1->id}", 'status'));
-        $this->assertSame(GroupStatus::Starting->value, Redis::hget(MatchMakingManager::GROUP_KEY_PREFIX."u:{$user2->id}", 'status'));
+        $this->assertSame(GroupStatus::Starting->value, Redis::hget(MatchMakingRedisKeys::GROUP_KEY_PREFIX."u:{$user1->id}", 'status'));
+        $this->assertSame(GroupStatus::Starting->value, Redis::hget(MatchMakingRedisKeys::GROUP_KEY_PREFIX."u:{$user2->id}", 'status'));
     }
 
     public function test_start_match_creates_game_and_broadcasts(): void
@@ -212,12 +242,59 @@ class MatchMakingManagerTest extends TestCase
 
         // Match started broadcast
         Event::assertDispatched(MMMatchStarted::class, function (MMMatchStarted $e) use ($match) {
-            return $e->matchId === $match->id;
+            return $e->payload->matchId === $match->id;
         });
 
         // Groups should be in in_match state
-        $this->assertSame(GroupStatus::InMatch->value, Redis::hget(MatchMakingManager::GROUP_KEY_PREFIX."u:{$user1->id}", 'status'));
-        $this->assertSame(GroupStatus::InMatch->value, Redis::hget(MatchMakingManager::GROUP_KEY_PREFIX."u:{$user2->id}", 'status'));
+        $this->assertSame(GroupStatus::InMatch->value, Redis::hget(MatchMakingRedisKeys::GROUP_KEY_PREFIX."u:{$user1->id}", 'status'));
+        $this->assertSame(GroupStatus::InMatch->value, Redis::hget(MatchMakingRedisKeys::GROUP_KEY_PREFIX."u:{$user2->id}", 'status'));
+    }
+
+    public function test_start_match_is_idempotent(): void
+    {
+        $user1 = User::factory()->create(['mmr' => 1750]);
+        $user2 = User::factory()->create(['mmr' => 1755]);
+        $session1 = Str::uuid()->toString();
+        $session2 = Str::uuid()->toString();
+
+        $this->mm->startSearch($user1, GameMode::OneOnOne, $session1);
+        $this->mm->startSearch($user2, GameMode::OneOnOne, $session2);
+        $this->mm->processTick();
+
+        $ticketId = $this->getTicketIdFromGroup($user1);
+        $this->mm->acceptTicket($user1, $ticketId, $session1);
+        $this->mm->acceptTicket($user2, $ticketId, $session2);
+
+        $this->mm->startMatch($ticketId);
+        $this->mm->startMatch($ticketId);
+
+        $matches = GameMatch::query()
+            ->whereJsonContains('players', $user1->id)
+            ->whereJsonContains('players', $user2->id)
+            ->get();
+
+        $this->assertCount(1, $matches);
+        $this->assertSame(TicketStatus::Started->value, Redis::hget(MatchMakingRedisKeys::TICKET_KEY_PREFIX.$ticketId, 'status'));
+    }
+
+    public function test_get_state_cleans_up_missing_ticket(): void
+    {
+        $user1 = User::factory()->create(['mmr' => 1400]);
+        $user2 = User::factory()->create(['mmr' => 1410]);
+        $session1 = Str::uuid()->toString();
+        $session2 = Str::uuid()->toString();
+
+        $this->mm->startSearch($user1, GameMode::OneOnOne, $session1);
+        $this->mm->startSearch($user2, GameMode::OneOnOne, $session2);
+        $this->mm->processTick();
+
+        $ticketId = $this->getTicketIdFromGroup($user1);
+        Redis::del(MatchMakingRedisKeys::TICKET_KEY_PREFIX.$ticketId);
+
+        $state = $this->mm->getState($user1);
+
+        $this->assertSame(GroupStatus::Idle->value, $state->state);
+        $this->assertEmpty(Redis::hgetall(MatchMakingRedisKeys::GROUP_KEY_PREFIX."u:{$user1->id}"));
     }
 
     public function test_decline_returns_other_players_to_queue(): void
@@ -241,16 +318,16 @@ class MatchMakingManagerTest extends TestCase
         // Ticket expired broadcast to both
         Event::assertDispatched(MMTicketExpired::class, function (MMTicketExpired $e) use ($user1, $ticketId) {
             return $e->userHash === $user1->getHashedId()
-                && $e->ticketId === $ticketId
-                && $e->reason === 'DECLINED'
-                && $e->backToSearch === true;
+                && $e->payload->ticketId === $ticketId
+                && $e->payload->reason === CancelReason::Declined->value
+                && $e->payload->backToSearch === true;
         });
 
         Event::assertDispatched(MMTicketExpired::class, function (MMTicketExpired $e) use ($user2, $ticketId) {
             return $e->userHash === $user2->getHashedId()
-                && $e->ticketId === $ticketId
-                && $e->reason === 'DECLINED'
-                && $e->backToSearch === false;
+                && $e->payload->ticketId === $ticketId
+                && $e->payload->reason === CancelReason::Declined->value
+                && $e->payload->backToSearch === false;
         });
 
         // User1 back to queue, user2 stopped
@@ -261,7 +338,7 @@ class MatchMakingManagerTest extends TestCase
         // User1 back to searching
         Event::assertDispatched(MMSearchUpdated::class, function (MMSearchUpdated $e) use ($user1) {
             return $e->userHash === $user1->getHashedId()
-                && $e->state === GroupStatus::Searching;
+                && $e->payload->state === GroupStatus::Searching->value;
         });
     }
 
@@ -289,13 +366,41 @@ class MatchMakingManagerTest extends TestCase
 
         // Ticket expired broadcast
         Event::assertDispatched(MMTicketExpired::class, function (MMTicketExpired $e) use ($ticketId) {
-            return $e->ticketId === $ticketId && $e->reason === 'TIMEOUT';
+            return $e->payload->ticketId === $ticketId && $e->payload->reason === CancelReason::Timeout->value;
         });
 
         // User1 (who accepted) back to queue, user2 (who timed out) stopped
         $members = $this->queueMembers(GameMode::OneOnOne->value);
         $this->assertContains("u:{$user1->id}", $members);
         $this->assertNotContains("u:{$user2->id}", $members);
+    }
+
+    public function test_expire_ticket_stops_all_timeouts_and_returns_accepters(): void
+    {
+        $users = [];
+        $sessions = [];
+        for ($i = 0; $i < 4; $i++) {
+            $users[$i] = User::factory()->create(['mmr' => 2000 + $i * 5]);
+            $sessions[$i] = Str::uuid()->toString();
+            $this->mm->startSearch($users[$i], GameMode::FreeForAll4, $sessions[$i]);
+        }
+
+        $this->mm->processTick();
+
+        $ticketId = $this->getTicketIdFromGroup($users[0]);
+        $this->assertNotNull($ticketId);
+
+        // Only user0 accepts; everyone else times out
+        $this->mm->acceptTicket($users[0], $ticketId, $sessions[0]);
+
+        Event::fake();
+        $this->mm->expireTicket($ticketId);
+
+        $members = $this->queueMembers(GameMode::FreeForAll4->value);
+        $this->assertContains("u:{$users[0]->id}", $members);
+        $this->assertNotContains("u:{$users[1]->id}", $members);
+        $this->assertNotContains("u:{$users[2]->id}", $members);
+        $this->assertNotContains("u:{$users[3]->id}", $members);
     }
 
     public function test_widening_allows_match_after_wait(): void
@@ -319,7 +424,7 @@ class MatchMakingManagerTest extends TestCase
         $this->mm->processTick();
 
         Event::assertDispatched(MMTicketCreated::class, function (MMTicketCreated $e) {
-            return $e->mode === GameMode::OneOnOne->value;
+            return $e->payload->mode === GameMode::OneOnOne->value;
         });
     }
 
@@ -351,7 +456,7 @@ class MatchMakingManagerTest extends TestCase
         $this->mm->processTick();
 
         Event::assertDispatched(MMTicketCreated::class, function (MMTicketCreated $e) {
-            return $e->mode === GameMode::FreeForAll4->value && $e->slotsTotal === 4;
+            return $e->payload->mode === GameMode::FreeForAll4->value && $e->payload->slotsTotal === 4;
         });
     }
 
@@ -374,20 +479,20 @@ class MatchMakingManagerTest extends TestCase
 
         Event::assertDispatched(MMSearchUpdated::class, function (MMSearchUpdated $e) use ($user) {
             return $e->userHash === $user->getHashedId()
-                && $e->state === GroupStatus::Idle
-                && $e->reason === 'SEARCH_TIMEOUT';
+                && $e->payload->state === GroupStatus::Idle->value
+                && $e->payload->reason === CancelReason::SearchTimeout->value;
         });
     }
 
     private function queueMembers(string $mode): array
     {
-        return Redis::zrange(MatchMakingManager::QUEUE_KEYS[$mode], 0, -1) ?? [];
+        return Redis::zrange(MatchMakingRedisKeys::QUEUE_KEYS[$mode], 0, -1) ?? [];
     }
 
     private function getTicketIdFromGroup(User $user): ?string
     {
         $groupKey = "u:{$user->id}";
-        $hashKey = MatchMakingManager::GROUP_KEY_PREFIX.$groupKey;
+        $hashKey = MatchMakingRedisKeys::GROUP_KEY_PREFIX.$groupKey;
 
         return Redis::hget($hashKey, 'ticket_id') ?: null;
     }

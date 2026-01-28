@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\MatchMaking\Broadcasting;
 
+use App\MatchMaking\Data\MatchMakingMatchStartedDTO;
+use App\MatchMaking\Http\Resources\MatchMakingMatchStartedResource;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 
@@ -11,7 +13,7 @@ readonly class MMMatchStarted implements ShouldBroadcastNow
 {
     public function __construct(
         public string $userHash,
-        public int $matchId,
+        public MatchMakingMatchStartedDTO $payload,
     ) {}
 
     public function broadcastOn(): PrivateChannel
@@ -26,8 +28,6 @@ readonly class MMMatchStarted implements ShouldBroadcastNow
 
     public function broadcastWith(): array
     {
-        return [
-            'matchId' => $this->matchId,
-        ];
+        return MatchMakingMatchStartedResource::make($this->payload)->resolve();
     }
 }

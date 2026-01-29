@@ -6,8 +6,8 @@ namespace App\MatchMaking\ValueObjects;
 
 enum CancelReason: string
 {
-    case UserCancelled = 'USER_CANCELLED';
-    case Declined = 'DECLINED';
-    case Timeout = 'TIMEOUT';
-    case SearchTimeout = 'SEARCH_TIMEOUT';
+    case UserCancelled = 'userCancelled';
+    case Declined = 'declined';
+    case Timeout = 'timeout';
+    case SearchTimeout = 'searchTimeout';
 }

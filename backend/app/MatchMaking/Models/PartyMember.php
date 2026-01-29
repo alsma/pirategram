@@ -12,6 +12,8 @@ class PartyMember extends Model
 {
     public const UPDATED_AT = null;
 
+    protected $fillable = ['party_id', 'user_id'];
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

@@ -8,19 +8,24 @@ use App\MatchMaking\Broadcasting\PartyUpdated;
 use App\MatchMaking\Models\Party;
 use App\MatchMaking\Models\PartyMember;
 use App\MatchMaking\Support\MatchMakingRedisKeys;
-use App\MatchMaking\ValueObjects\SearchStatus;
-use Illuminate\Support\Facades\Redis;
+use App\MatchMaking\ValueObjects\GameMode;
+use App\MatchMaking\ValueObjects\GroupStatus;
+use App\MatchMaking\ValueObjects\PartyAction;
+use App\MatchMaking\ValueObjects\PartyStatus;
+use Illuminate\Redis\RedisManager;
 use Illuminate\Support\Str;
 
 class PartyManager
 {
-    public const array MODES = ['1v1' => 2, '2v2' => 4, 'ffa4' => 4]; // mode => max players
+    public const array MODES = [
+        GameMode::TwoVsTwo->value => 4,
+    ];
 
     public function __construct(
         private readonly MatchMakingManager $matchMakingManager,
+        private readonly RedisManager $redis,
     ) {}
 
-    /** Create party with leader as first member */
     public function createParty(int $leaderId): Party
     {
         return transaction(function () use ($leaderId) {
@@ -28,8 +33,8 @@ class PartyManager
 
             $party = new Party;
             $party->leader()->associate($leaderId);
-            $party->mode = '1v1';
-            $party->status = 'idle';
+            $party->mode = GameMode::TwoVsTwo->value;
+            $party->status = PartyStatus::Idle->value;
             $party->save();
 
             $partyMember = new PartyMember;
@@ -39,101 +44,195 @@ class PartyManager
 
             $this->syncRedisParty($party->id);
 
-            broadcast(new PartyUpdated($party->id, 'created', $this->partyPayload($party->id)));
+            broadcast(new PartyUpdated($party->id, PartyAction::Created->value, $this->partyPayload($party->id)));
 
             return $party;
         });
     }
 
-    /** Destroy party; cancels matchmaking if active */
-    public function disband(int $leaderId, int $partyId): void
+    public function disband(int $leaderId, Party $party): void
     {
-        $party = Party::lockForUpdate()->findOrFail($partyId);
-        $this->assertLeader($party, $leaderId);
-
-        transaction(function () use ($party) {
-            $this->cancelIfSearching($party->id, $party->mode);
-            PartyMember::where('party_id', $party->id)->delete();
-            $party->delete();
-
-            // Cleanup Redis
-            Redis::del($this->rkParty($party->id));
-            Redis::zrem(MatchMakingRedisKeys::QUEUE_KEYS[$party->mode], "party:{$party->id}");
-
-            broadcast(new PartyUpdated($party->id, 'disbanded'));
-        });
-    }
-
-    /** Generate a short-lived invite code */
-    public function createInvite(int $leaderId, int $partyId, int $ttlSeconds = 300): string
-    {
-        $party = Party::findOrFail($partyId);
-        $this->assertLeader($party, $leaderId);
-
-        $code = strtoupper(Str::random(6));
-        $key = "mm:invite:{$code}";
-
-        Redis::setex($key, $ttlSeconds, json_encode(['party_id' => $partyId, 'mode' => $party->mode]));
-
-        return $code;
-    }
-
-    /** Join by invite code */
-    public function joinByCode(int $userId, string $code): void
-    {
-        $payload = Redis::get('mm:invite:'.strtoupper($code));
-        if (!$payload) {
-            throw new \DomainException('Invite code is invalid or expired.');
-        }
-        $payload = json_decode($payload, true);
-        $this->join($userId, (int) $payload['party_id']);
-    }
-
-    /** Join by party id (e.g., friends list click) */
-    public function join(int $userId, int $partyId): void
-    {
-        $lock = $this->lockParty($partyId);
+        $lock = $this->lockParty($party->id);
         try {
-            transaction(function () use ($userId, $partyId) {
-                $party = Party::lockForUpdate()->findOrFail($partyId);
+            transaction(function () use ($leaderId, $party) {
+                $party = Party::lockForUpdate()->findOrFail($party->id);
+                $this->assertLeader($party, $leaderId);
 
-                $this->ensureCapacity($party);
+                $this->cancelIfSearching($party->id, $party->mode);
+                PartyMember::where('party_id', $party->id)->delete();
+                $party->delete();
 
-                // A user can be in only one party
-                PartyMember::where('user_id', $userId)->delete();
+                $this->redis->del($this->rkParty($party->id));
+                $this->redis->zrem(MatchMakingRedisKeys::QUEUE_KEYS[$party->mode], "party:{$party->id}");
 
-                PartyMember::firstOrCreate([
-                    'party_id' => $party->id,
-                    'user_id' => $userId,
-                ]);
-
-                $this->cancelIfSearching($party->id, $party->mode); // composition changed
-
-                $this->syncRedisParty($party->id);
-                broadcast(new PartyUpdated($party->id, 'member_joined', $this->partyPayload($party->id)));
+                broadcast(new PartyUpdated($party->id, PartyAction::Disbanded->value));
             });
         } finally {
             $this->unlock($lock);
         }
     }
 
-    /** Leave party; transfer leadership if needed, disband if last member */
-    public function leave(int $userId, int $partyId): void
+    public function createInvite(int $leaderId, int $invitedUserId, string $mode, int $ttlSeconds = 120): void
     {
-        $lock = $this->lockParty($partyId);
+        // Use leader-level lock to prevent concurrent invite operations by same leader
+        $leaderLock = $this->lockLeaderInvites($leaderId);
         try {
-            transaction(function () use ($userId, $partyId) {
-                $party = Party::lockForUpdate()->findOrFail($partyId);
+            $party = Party::where('leader_id', $leaderId)->first();
+            if ($party) {
+                $lock = $this->lockParty($party->id);
+                try {
+                    transaction(function () use ($party, $leaderId, $invitedUserId, &$mode, $ttlSeconds) {
+                        $party = Party::lockForUpdate()->findOrFail($party->id);
+                        $this->assertLeader($party, $leaderId);
+                        $this->assertNotSearching($party);
+                        $mode = $party->mode;
+                        $this->redis->del($this->rkPartyInviteLeaderMode($leaderId));
 
-                PartyMember::where(['party_id' => $partyId, 'user_id' => $userId])->delete();
+                        $key = $this->rkPartyInvite($invitedUserId, $leaderId);
+                        $payload = [
+                            'leader_id' => $leaderId,
+                            'mode' => $mode,
+                            'party_id' => $party->id,
+                        ];
+                        $this->redis->setex($key, $ttlSeconds, json_encode($payload));
+                        // Track this invite leader for easy cleanup
+                        $this->redis->sadd($this->rkUserInviteLeaders($invitedUserId), $leaderId);
+                        $this->redis->expire($this->rkUserInviteLeaders($invitedUserId), $ttlSeconds + 60);
+                    });
+                } finally {
+                    $this->unlock($lock);
+                }
+            } else {
+                // No party exists yet, use Redis to track mode consistency
+                $existingMode = $this->redis->get($this->rkPartyInviteLeaderMode($leaderId));
+                if ($existingMode && $existingMode !== $mode) {
+                    throw new \DomainException('All invites must use the same mode.');
+                }
 
-                $members = PartyMember::where('party_id', $partyId)->pluck('user_id')->all();
+                $this->redis->setex($this->rkPartyInviteLeaderMode($leaderId), $ttlSeconds, $mode);
+
+                $key = $this->rkPartyInvite($invitedUserId, $leaderId);
+                $payload = [
+                    'leader_id' => $leaderId,
+                    'mode' => $mode,
+                ];
+                $this->redis->setex($key, $ttlSeconds, json_encode($payload));
+                // Track this invite leader for easy cleanup
+                $this->redis->sadd($this->rkUserInviteLeaders($invitedUserId), $leaderId);
+                $this->redis->expire($this->rkUserInviteLeaders($invitedUserId), $ttlSeconds + 60);
+            }
+        } finally {
+            $this->unlock($leaderLock);
+        }
+    }
+
+    public function acceptInvite(int $userId, int $leaderId): void
+    {
+        // Lock the user to prevent them from accepting multiple invites simultaneously
+        $userLock = $this->lockUser($userId);
+        try {
+            // Check if user is already in a party before doing anything else
+            if (PartyMember::where('user_id', $userId)->exists()) {
+                throw new \DomainException('User already in a party.');
+            }
+
+            $payload = $this->redis->get($this->rkPartyInvite($userId, $leaderId));
+            if (!$payload) {
+                throw new \DomainException('Invite code is invalid or expired.');
+            }
+
+            $payload = json_decode($payload, true);
+
+            // Lock leader to prevent concurrent party creation
+            $leaderLock = $this->lockLeaderInvites($leaderId);
+            try {
+                $party = isset($payload['party_id'])
+                    ? Party::findOrFail((int) $payload['party_id'])
+                    : Party::where('leader_id', $leaderId)->first();
+
+                if (!$party) {
+                    $party = $this->createParty($leaderId);
+                    if ($payload['mode'] !== $party->mode) {
+                        $this->setMode($leaderId, $party, $payload['mode']);
+                        $party->refresh();
+                    }
+                }
+
+                $this->join($userId, $party);
+                $this->clearUserInvites($userId);
+                $this->redis->del($this->rkPartyInviteLeaderMode($leaderId));
+            } finally {
+                $this->unlock($leaderLock);
+            }
+        } finally {
+            $this->unlock($userLock);
+        }
+    }
+
+    public function declineInvite(int $userId, int $leaderId): void
+    {
+        $key = $this->rkPartyInvite($userId, $leaderId);
+        $payload = $this->redis->get($key);
+
+        if (!$payload) {
+            throw new \DomainException('Invite code is invalid or expired.');
+        }
+
+        $this->redis->del($key);
+        $this->redis->srem($this->rkUserInviteLeaders($userId), $leaderId);
+    }
+
+    public function join(int $userId, Party $party): void
+    {
+        $lock = $this->lockParty($party->id);
+        try {
+            transaction(function () use ($userId, $party) {
+                $party = Party::lockForUpdate()->findOrFail($party->id);
+
+                $existing = PartyMember::where('user_id', $userId)->first();
+                if ($existing) {
+                    if ($existing->party_id === $party->id) {
+                        return;
+                    }
+
+                    throw new \DomainException('User already in a party.');
+                }
+
+                $this->ensureCapacity($party);
+
+                PartyMember::firstOrCreate([
+                    'party_id' => $party->id,
+                    'user_id' => $userId,
+                ]);
+
+                $this->cancelIfSearching($party->id, $party->mode);
+
+                $this->syncRedisParty($party->id);
+                broadcast(new PartyUpdated($party->id, PartyAction::MemberJoined->value, $this->partyPayload($party->id)));
+            });
+        } finally {
+            $this->unlock($lock);
+        }
+    }
+
+    public function leave(int $userId, Party $party): void
+    {
+        $lock = $this->lockParty($party->id);
+        try {
+            transaction(function () use ($userId, $party) {
+                $party = Party::lockForUpdate()->findOrFail($party->id);
+
+                PartyMember::where(['party_id' => $party->id, 'user_id' => $userId])->delete();
+
+                $members = PartyMember::where('party_id', $party->id)
+                    ->orderBy('created_at')
+                    ->pluck('user_id')
+                    ->all();
                 if (empty($members)) {
-                    // Disband
-                    $this->cancelIfSearching($partyId, $party->mode);
+                    $this->cancelIfSearching($party->id, $party->mode);
                     $party->delete();
-                    Redis::del($this->rkParty($partyId));
-                    broadcast(new PartyUpdated($partyId, 'disbanded'));
+                    $this->redis->del($this->rkParty($party->id));
+                    broadcast(new PartyUpdated($party->id, PartyAction::Disbanded->value));
 
                     return;
                 }
@@ -143,26 +242,25 @@ class PartyManager
                     $party->save();
                 }
 
-                $this->cancelIfSearching($partyId, $party->mode); // composition changed
+                $this->cancelIfSearching($party->id, $party->mode);
 
-                $this->syncRedisParty($partyId);
-                broadcast(new PartyUpdated($partyId, 'member_left', $this->partyPayload($partyId)));
+                $this->syncRedisParty($party->id);
+                broadcast(new PartyUpdated($party->id, PartyAction::MemberLeft->value, $this->partyPayload($party->id)));
             });
         } finally {
             $this->unlock($lock);
         }
     }
 
-    /** Promote another member to leader */
-    public function promote(int $leaderId, int $partyId, int $newLeaderUserId): void
+    public function promote(int $leaderId, Party $party, int $newLeaderUserId): void
     {
-        $lock = $this->lockParty($partyId);
+        $lock = $this->lockParty($party->id);
         try {
-            transaction(function () use ($leaderId, $partyId, $newLeaderUserId) {
-                $party = Party::lockForUpdate()->findOrFail($partyId);
+            transaction(function () use ($leaderId, $party, $newLeaderUserId) {
+                $party = Party::lockForUpdate()->findOrFail($party->id);
                 $this->assertLeader($party, $leaderId);
 
-                $exists = PartyMember::where(['party_id' => $partyId, 'user_id' => $newLeaderUserId])->exists();
+                $exists = PartyMember::where(['party_id' => $party->id, 'user_id' => $newLeaderUserId])->exists();
                 if (!$exists) {
                     throw new \DomainException('User is not in the party.');
                 }
@@ -170,53 +268,52 @@ class PartyManager
                 $party->leader_id = $newLeaderUserId;
                 $party->save();
 
-                $this->syncRedisParty($partyId);
-                broadcast(new PartyUpdated($partyId, 'leader_changed', $this->partyPayload($partyId)));
+                $this->syncRedisParty($party->id);
+                broadcast(new PartyUpdated($party->id, PartyAction::LeaderChanged->value, $this->partyPayload($party->id)));
             });
         } finally {
             $this->unlock($lock);
         }
     }
 
-    /** Kick member (leader only) */
-    public function kick(int $leaderId, int $partyId, int $memberUserId): void
+    public function kick(int $leaderId, Party $party, int $memberUserId): void
     {
-        $lock = $this->lockParty($partyId);
+        $lock = $this->lockParty($party->id);
         try {
-            transaction(function () use ($leaderId, $partyId, $memberUserId) {
-                $party = Party::lockForUpdate()->findOrFail($partyId);
+            transaction(function () use ($leaderId, $party, $memberUserId) {
+                $party = Party::lockForUpdate()->findOrFail($party->id);
                 $this->assertLeader($party, $leaderId);
 
                 if ($memberUserId === $leaderId) {
                     throw new \DomainException('Leader cannot kick self.');
                 }
 
-                PartyMember::where(['party_id' => $partyId, 'user_id' => $memberUserId])->delete();
+                PartyMember::where(['party_id' => $party->id, 'user_id' => $memberUserId])->delete();
 
-                $this->cancelIfSearching($partyId, $party->mode); // composition changed
+                $this->cancelIfSearching($party->id, $party->mode);
 
-                $this->syncRedisParty($partyId);
-                broadcast(new PartyUpdated($partyId, 'member_kicked', $this->partyPayload($partyId)));
+                $this->syncRedisParty($party->id);
+                broadcast(new PartyUpdated($party->id, PartyAction::MemberKicked->value, $this->partyPayload($party->id)));
             });
         } finally {
             $this->unlock($lock);
         }
     }
 
-    /** Change party mode (may reduce allowed size; validate before) */
-    public function setMode(int $leaderId, int $partyId, string $mode): void
+    public function setMode(int $leaderId, Party $party, string $mode): void
     {
         if (!array_key_exists($mode, self::MODES)) {
             throw new \InvalidArgumentException('Unsupported mode');
         }
 
-        $lock = $this->lockParty($partyId);
+        $lock = $this->lockParty($party->id);
         try {
-            transaction(function () use ($leaderId, $partyId, $mode) {
-                $party = Party::lockForUpdate()->findOrFail($partyId);
+            transaction(function () use ($leaderId, $party, $mode) {
+                $party = Party::lockForUpdate()->findOrFail($party->id);
                 $this->assertLeader($party, $leaderId);
+                $this->assertNotSearching($party);
 
-                $count = PartyMember::where('party_id', $partyId)->count();
+                $count = PartyMember::where('party_id', $party->id)->count();
                 $max = self::MODES[$mode];
                 if ($count > $max) {
                     throw new \DomainException("Too many members for mode {$mode} (max {$max}).");
@@ -225,17 +322,16 @@ class PartyManager
                 $party->mode = $mode;
                 $party->save();
 
-                $this->cancelIfSearching($partyId, $mode); // rules changed
+                $this->cancelIfSearching($party->id, $mode);
 
-                $this->syncRedisParty($partyId);
-                broadcast(new PartyUpdated($partyId, 'mode_changed', $this->partyPayload($partyId)));
+                $this->syncRedisParty($party->id);
+                broadcast(new PartyUpdated($party->id, PartyAction::ModeChanged->value, $this->partyPayload($party->id)));
             });
         } finally {
             $this->unlock($lock);
         }
     }
 
-    /** Helper: push current composition into Redis hash the matcher uses */
     public function syncRedisParty(int $partyId): void
     {
         $party = Party::findOrFail($partyId);
@@ -249,22 +345,22 @@ class PartyManager
 
         $avgMmr = (int) round(collect($members)->avg('mmr') ?? 1200);
 
-        // Update Redis party hash (so MatchMakingManager.startSearch can reuse)
-        Redis::hmset($this->rkParty($partyId), [
+        $this->redis->hmset($this->rkParty($partyId), [
+            'group_key' => "party:{$partyId}",
             'party_id' => $partyId,
             'leader_id' => $party->leader_id,
             'members_json' => json_encode($members),
             'size' => count($members),
+            'mmr' => $avgMmr,
             'base_mmr' => $avgMmr,
             'mode' => $party->mode,
-            'status' => SearchStatus::Idle->value,
+            'status' => GroupStatus::Idle->value,
         ]);
     }
 
-    /** Cancel active search if any (idempotent) */
     private function cancelIfSearching(int $partyId, string $mode): void
     {
-        $hash = Redis::hgetall($this->rkParty($partyId));
+        $hash = $this->redis->hgetall($this->rkParty($partyId));
         if (($hash['status'] ?? null) === 'searching') {
             $this->matchMakingManager->cancelSearch($partyId, $mode);
             // Broadcast cancel (MatchMakingManager already does)
@@ -280,6 +376,14 @@ class PartyManager
         }
     }
 
+    private function assertNotSearching(Party $party): void
+    {
+        $hash = $this->redis->hgetall($this->rkParty($party->id));
+        if (($hash['status'] ?? null) === GroupStatus::Searching->value) {
+            throw new \DomainException('Matchmaking is active for this party.');
+        }
+    }
+
     private function assertLeader(Party $party, int $userId): void
     {
         if ($party->leader_id !== $userId) {
@@ -289,18 +393,71 @@ class PartyManager
 
     private function rkParty(int $partyId): string
     {
-        return MatchMakingManager::PARTY_KEY_PREFIX.$partyId;
+        return MatchMakingRedisKeys::GROUP_KEY_PREFIX."party:{$partyId}";
     }
 
-    /** Simple Redis lock around a party to avoid racey joins/kicks/promotes */
+    private function rkPartyInvite(int $userId, int $leaderId): string
+    {
+        return "mm:invite:user:{$userId}:leader:{$leaderId}";
+    }
+
+    private function rkPartyInviteLeaderMode(int $leaderId): string
+    {
+        return "mm:invite:leader:{$leaderId}:mode";
+    }
+
+    private function rkUserInviteLeaders(int $userId): string
+    {
+        return "mm:invite:user:{$userId}:leaders";
+    }
+
+    private function clearUserInvites(int $userId): void
+    {
+        // Get all leader IDs that have sent invites to this user
+        $leaderIds = $this->redis->smembers($this->rkUserInviteLeaders($userId));
+
+        if (!empty($leaderIds)) {
+            foreach ($leaderIds as $leaderId) {
+                $this->redis->del($this->rkPartyInvite($userId, (int) $leaderId));
+            }
+            $this->redis->del($this->rkUserInviteLeaders($userId));
+        }
+    }
+
     private function lockParty(int $partyId, int $ttlMs = 5000): array
     {
         $key = "mm:lock:party:{$partyId}";
         $val = Str::uuid()->toString();
 
-        $acquired = Redis::set($key, $val, 'PX', $ttlMs, 'NX');
+        $acquired = $this->redis->set($key, $val, 'PX', $ttlMs, 'NX');
         if (!$acquired) {
             throw new \RuntimeException('Party is busy, please retry.');
+        }
+
+        return [$key, $val];
+    }
+
+    private function lockUser(int $userId, int $ttlMs = 5000): array
+    {
+        $key = "mm:lock:user:{$userId}";
+        $val = Str::uuid()->toString();
+
+        $acquired = $this->redis->set($key, $val, 'PX', $ttlMs, 'NX');
+        if (!$acquired) {
+            throw new \RuntimeException('User is busy, please retry.');
+        }
+
+        return [$key, $val];
+    }
+
+    private function lockLeaderInvites(int $leaderId, int $ttlMs = 5000): array
+    {
+        $key = "mm:lock:leader:invites:{$leaderId}";
+        $val = Str::uuid()->toString();
+
+        $acquired = $this->redis->set($key, $val, 'PX', $ttlMs, 'NX');
+        if (!$acquired) {
+            throw new \RuntimeException('Leader invite operation is busy, please retry.');
         }
 
         return [$key, $val];
@@ -318,20 +475,33 @@ else
   return 0
 end
 LUA;
-            Redis::eval($lua, 1, $key, $val);
+            $this->redis->eval($lua, 1, $key, $val);
         } catch (\Throwable) {
             // swallow
         }
     }
 
-    /** Payload for broadcasting current state to clients */
+    public function getUserParty(int $userId): ?Party
+    {
+        $member = PartyMember::where('user_id', $userId)->first();
+
+        return $member ? Party::find($member->party_id) : null;
+    }
+
+    public function ensureIsLeader(Party $party, int $userId): void
+    {
+        if ($party->leader_id !== $userId) {
+            throw new \DomainException('Only the party leader can perform this action.');
+        }
+    }
+
     private function partyPayload(int $partyId): array
     {
         $party = Party::findOrFail($partyId);
-        $members = PartyMember::with('user:id,name')
+        $members = PartyMember::with('user:id,username')
             ->where('party_id', $partyId)
             ->get()
-            ->map(fn ($m) => ['id' => $m->user_id, 'name' => $m->user->name])
+            ->map(fn ($m) => ['id' => $m->user_id, 'username' => $m->user->username])
             ->values()->all();
 
         return [

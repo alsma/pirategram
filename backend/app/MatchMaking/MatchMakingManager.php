@@ -15,8 +15,8 @@ use App\MatchMaking\Data\MatchMakingInMatchStateDTO;
 use App\MatchMaking\Data\MatchMakingMatchStartedDTO;
 use App\MatchMaking\Data\MatchMakingMatchStartingDTO;
 use App\MatchMaking\Data\MatchMakingProposedStateDTO;
-use App\MatchMaking\Data\MatchMakingSearchUpdateDTO;
 use App\MatchMaking\Data\MatchMakingSearchingStateDTO;
+use App\MatchMaking\Data\MatchMakingSearchUpdateDTO;
 use App\MatchMaking\Data\MatchMakingStartDTO;
 use App\MatchMaking\Data\MatchMakingStartingStateDTO;
 use App\MatchMaking\Data\MatchMakingState;
@@ -26,6 +26,8 @@ use App\MatchMaking\Data\MatchMakingTicketUpdatedDTO;
 use App\MatchMaking\Jobs\MatchStartJob;
 use App\MatchMaking\Jobs\TicketExpiryJob;
 use App\MatchMaking\Models\GameMatch;
+use App\MatchMaking\Models\Party;
+use App\MatchMaking\Models\PartyMember;
 use App\MatchMaking\Support\MatchMakingRedisKeys;
 use App\MatchMaking\ValueObjects\CancelReason;
 use App\MatchMaking\ValueObjects\GameMode;
@@ -105,6 +107,77 @@ class MatchMakingManager
         );
     }
 
+    public function startPartySearch(Party $party, string $sessionId): MatchMakingStartDTO
+    {
+        $partyMembers = PartyMember::with('user')
+            ->where('party_id', $party->id)
+            ->get();
+
+        if ($partyMembers->isEmpty()) {
+            throw new \DomainException('Party has no members');
+        }
+
+        $leaderId = $party->leader_id;
+        $this->validateSession($leaderId, $sessionId);
+
+        $groupKey = "party:{$party->id}";
+        $hashKey = MatchMakingRedisKeys::GROUP_KEY_PREFIX.$groupKey;
+        $mode = GameMode::from($party->mode);
+        $queueKey = MatchMakingRedisKeys::QUEUE_KEYS[$mode->value];
+
+        $now = now()->timestamp;
+
+        $members = $partyMembers->map(fn ($pm) => [
+            'user_id' => $pm->user_id,
+            'mmr' => $pm->user->mmr ?? 0,
+        ])->all();
+
+        $avgMmr = (int) round(collect($members)->avg('mmr') ?? 1200);
+
+        $this->redis->hmset($hashKey, [
+            'group_key' => $groupKey,
+            'mode' => $mode->value,
+            'mmr' => $avgMmr,
+            'size' => count($members),
+            'status' => GroupStatus::Searching->value,
+            'search_started_at' => $now,
+            'search_expires_at' => $now + self::SEARCH_TIMEOUT_SECONDS,
+            'ticket_id' => '',
+            'session_id' => $sessionId,
+            'members_json' => json_encode($members),
+            'updated_at' => $now,
+        ]);
+        $this->redis->expire($hashKey, self::SEARCH_TIMEOUT_SECONDS + 60);
+
+        $this->redis->zadd($queueKey, [$groupKey => $avgMmr]);
+
+        $this->setActiveSession($leaderId, $sessionId);
+
+        $memberUserIds = $partyMembers->pluck('user_id')->all();
+        $usersById = $this->loadUsersByIds($memberUserIds);
+
+        foreach ($memberUserIds as $userId) {
+            $user = $usersById[$userId] ?? null;
+            if ($user instanceof User) {
+                $searchUpdate = new MatchMakingSearchUpdateDTO(
+                    GroupStatus::Searching->value,
+                    $mode->value,
+                    $now,
+                    $now + self::SEARCH_TIMEOUT_SECONDS,
+                );
+                broadcast(new MMSearchUpdated($user->getHashedId(), $searchUpdate));
+            }
+        }
+
+        return new MatchMakingStartDTO(
+            GroupStatus::Searching->value,
+            $mode->value,
+            $now,
+            $now + self::SEARCH_TIMEOUT_SECONDS,
+            $sessionId,
+        );
+    }
+
     public function cancelSearch(User $user, string $sessionId): void
     {
         $this->validateSession($user->id, $sessionId);
@@ -141,6 +214,52 @@ class MatchMakingManager
             CancelReason::UserCancelled->value,
         );
         broadcast(new MMSearchUpdated($user->getHashedId(), $searchUpdate));
+    }
+
+    public function cancelPartySearch(Party $party, string $sessionId): void
+    {
+        $this->validateSession($party->leader_id, $sessionId);
+
+        $groupKey = "party:{$party->id}";
+        $hashKey = MatchMakingRedisKeys::GROUP_KEY_PREFIX.$groupKey;
+
+        $hash = $this->redis->hgetall($hashKey);
+        if (empty($hash)) {
+            return;
+        }
+
+        $status = $hash['status'] ?? '';
+        if ($status === GroupStatus::Searching->value) {
+            $mode = $hash['mode'];
+            $queueKey = MatchMakingRedisKeys::QUEUE_KEYS[$mode];
+            $this->redis->zrem($queueKey, $groupKey);
+        }
+
+        if ($status === GroupStatus::Proposed->value && !empty($hash['ticket_id'])) {
+            $this->cancelTicket($party->leader_id, $hash['ticket_id'], CancelReason::UserCancelled);
+
+            return;
+        }
+
+        $this->redis->del($hashKey);
+        $this->clearActiveSession($party->leader_id);
+
+        $memberUserIds = PartyMember::where('party_id', $party->id)->pluck('user_id')->all();
+        $usersById = $this->loadUsersByIds($memberUserIds);
+
+        foreach ($memberUserIds as $userId) {
+            $user = $usersById[$userId] ?? null;
+            if ($user instanceof User) {
+                $searchUpdate = new MatchMakingSearchUpdateDTO(
+                    GroupStatus::Idle->value,
+                    null,
+                    null,
+                    null,
+                    CancelReason::UserCancelled->value,
+                );
+                broadcast(new MMSearchUpdated($user->getHashedId(), $searchUpdate));
+            }
+        }
     }
 
     public function getState(User $user): MatchMakingState

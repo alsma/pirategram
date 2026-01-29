@@ -26,6 +26,7 @@ Run commands from the noted directories.
 - Backend: PHP uses `declare(strict_types=1)` and Laravel conventions (PSR-4 namespaces, StudlyCase classes). Use Pint for formatting.
 - Frontend: follow existing style (2-space indent, double quotes, no semicolons). React components are `PascalCase`, hooks are `useX`.
 - File naming: Vike pages use `+Page.jsx`, route groups live in `(group-name)/` folders.
+- Always use enums on backend and constants on frontend instead of magic strings
 
 ## Testing Guidelines
 - Backend tests are PHPUnit via `php artisan test`. Test files live in `backend/tests/` and use `*Test.php` naming.

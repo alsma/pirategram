@@ -5,7 +5,7 @@ import { echo } from '@laravel/echo-react'
 
 import { useAuthStore } from "@/store/context/auth"
 import { usePartyStore, selectQueueStatus } from "@/store/party-store"
-import { GroupStatus } from '@/lib/constants/matchmaking.js'
+import { CancelReason, GroupStatus } from '@/lib/constants/matchmaking.js'
 import FriendsSidebar from "@/components/social/friends-sidebar"
 import PartyBar from "@/components/social/party-bar"
 import GameModes from "@/components/game/game-modes"
@@ -42,9 +42,9 @@ export default function PlayPage() {
         handleSearchUpdated(e)
 
         // Show toast for certain state changes
-        if (e.state === GroupStatus.Idle && e.reason === 'USER_CANCELLED') {
+        if (e.state === GroupStatus.Idle && e.reason === CancelReason.UserCancelled) {
           toast.info('Search cancelled')
-        } else if (e.state === GroupStatus.Idle && e.reason === 'SEARCH_TIMEOUT') {
+        } else if (e.state === GroupStatus.Idle && e.reason === CancelReason.SearchTimeout) {
           toast.error('Search timed out - no match found')
         } else if (e.state === GroupStatus.Searching) {
           toast.success('Searching for match...')
@@ -60,13 +60,13 @@ export default function PlayPage() {
       .listen('.mm.ticket.expired', (e) => {
         handleTicketExpired(e)
 
-        if (e.reason === 'DECLINED') {
+        if (e.reason === CancelReason.Declined) {
           if (e.backToSearch) {
             toast.warning('Player declined - returning to queue')
           } else {
             toast.error('You declined the match')
           }
-        } else if (e.reason === 'TIMEOUT') {
+        } else if (e.reason === CancelReason.Timeout) {
           if (e.backToSearch) {
             toast.warning('Player timed out - returning to queue')
           } else {

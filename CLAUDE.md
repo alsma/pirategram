@@ -69,7 +69,8 @@ Queue structure uses Redis sorted sets by game mode (1v1, 2v2, ffa4). Status wor
 - Events: `UserSearchUpdated`, `SearchUpdated`, `TicketUpdated`, `GameStateUpdated`
 
 ## Key Patterns
-
+- Always use enums on backend and constants on frontend instead of magic strings
+ 
 ### Backend
 - All PHP files use `declare(strict_types=1)`
 - User IDs are obfuscated using Hashids (`HashedIdTrait`)

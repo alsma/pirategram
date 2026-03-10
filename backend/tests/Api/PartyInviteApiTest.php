@@ -31,7 +31,7 @@ class PartyInviteApiTest extends TestCase
 
         $this->actingAs($leader, 'sanctum');
         $response = $this->postJson('/api/mm/party/invite', [
-            'userId' => $invitee->id,
+            'userId' => $invitee->getHashedId(),
             'mode' => \App\MatchMaking\ValueObjects\GameMode::TwoVsTwo->value,
         ]);
 
@@ -48,10 +48,19 @@ class PartyInviteApiTest extends TestCase
 
         $this->actingAs($member, 'sanctum');
         $response = $this->postJson('/api/mm/party/invite/accept', [
-            'leaderId' => $leader->id,
+            'leaderId' => $leader->getHashedId(),
         ]);
 
-        $response->assertOk()->assertJson(['ok' => true]);
+        $response->assertOk()->assertJsonStructure([
+            'partyHash',
+            'leaderId',
+            'leaderHash',
+            'mode',
+            'members' => [
+                '*' => ['userId', 'userHash', 'username'],
+            ],
+            'maxPlayers',
+        ]);
 
         $party = \App\MatchMaking\Models\Party::where('leader_id', $leader->id)->firstOrFail();
         $this->assertTrue(
@@ -59,6 +68,13 @@ class PartyInviteApiTest extends TestCase
                 ->where('user_id', $member->id)
                 ->exists()
         );
+
+        // Verify the response contains the correct party data
+        $response->assertJson([
+            'leaderId' => $leader->id,
+            'leaderHash' => $leader->getHashedId(),
+            'mode' => \App\MatchMaking\ValueObjects\GameMode::TwoVsTwo->value,
+        ]);
     }
 
     public function test_accept_party_invite_endpoint_fails_for_invalid_code(): void
@@ -68,7 +84,7 @@ class PartyInviteApiTest extends TestCase
 
         $this->actingAs($member, 'sanctum');
         $response = $this->postJson('/api/mm/party/invite/accept', [
-            'leaderId' => $leader->id,
+            'leaderId' => $leader->getHashedId(),
         ]);
 
         $response->assertStatus(422)->assertJson([
@@ -88,7 +104,7 @@ class PartyInviteApiTest extends TestCase
 
         $this->actingAs($member, 'sanctum');
         $response = $this->postJson('/api/mm/party/invite/accept', [
-            'leaderId' => $leader->id,
+            'leaderId' => $leader->getHashedId(),
         ]);
 
         $response->assertStatus(422)->assertJson([
@@ -105,7 +121,7 @@ class PartyInviteApiTest extends TestCase
 
         $this->actingAs($member, 'sanctum');
         $response = $this->postJson('/api/mm/party/invite/decline', [
-            'leaderId' => $leader->id,
+            'leaderId' => $leader->getHashedId(),
         ]);
 
         $response->assertOk()->assertJson(['ok' => true]);
@@ -119,11 +135,37 @@ class PartyInviteApiTest extends TestCase
 
         $this->actingAs($member, 'sanctum');
         $response = $this->postJson('/api/mm/party/invite/decline', [
-            'leaderId' => $leader->id,
+            'leaderId' => $leader->getHashedId(),
         ]);
 
         $response->assertStatus(422)->assertJson([
             'message' => 'Invite code is invalid or expired.',
         ]);
+    }
+
+    public function test_duplicate_party_invite_returns_ok_without_error(): void
+    {
+        $leader = User::factory()->create();
+        $invitee = User::factory()->create();
+
+        $this->actingAs($leader, 'sanctum');
+
+        // Send first invite
+        $response1 = $this->postJson('/api/mm/party/invite', [
+            'userId' => $invitee->getHashedId(),
+            'mode' => \App\MatchMaking\ValueObjects\GameMode::TwoVsTwo->value,
+        ]);
+        $response1->assertOk();
+
+        // Send duplicate invite - should return 200 without error
+        $response2 = $this->postJson('/api/mm/party/invite', [
+            'userId' => $invitee->getHashedId(),
+            'mode' => \App\MatchMaking\ValueObjects\GameMode::TwoVsTwo->value,
+        ]);
+        $response2->assertOk()->assertJson(['ok' => true]);
+
+        // Verify only one invite exists in Redis
+        $inviteKey = "mm:invite:user:{$invitee->id}:leader:{$leader->id}";
+        $this->assertNotNull(Redis::get($inviteKey));
     }
 }

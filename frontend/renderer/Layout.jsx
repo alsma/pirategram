@@ -5,7 +5,9 @@ import { childrenPropType } from './PropTypeValues'
 import { PageContextProvider } from './usePageContext'
 
 import { Toaster } from '@/components/ui/toaster'
+import { Toaster as SonnerToaster } from 'sonner'
 import MainNav from '@/components/layout/main-nav'
+import SocialLayout from '@/components/layout/social-layout'
 
 import './css/index.css'
 
@@ -20,10 +22,11 @@ function Layout({ pageContext, children }) {
     <React.StrictMode>
       <PageContextProvider pageContext={pageContext}>
         <MainNav />
-        <main>
+        <SocialLayout>
           {children}
-        </main>
+        </SocialLayout>
         <Toaster position="top-right" />
+        <SonnerToaster position="top-right" richColors />
       </PageContextProvider>
     </React.StrictMode>
   )

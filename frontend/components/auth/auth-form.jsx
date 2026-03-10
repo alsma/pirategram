@@ -80,6 +80,7 @@ export default function AuthForm({ defaultPanel }) {
               <Input
                 name="identity"
                 placeholder="Pirate#1234 or email"
+                autoComplete="username"
                 className="pl-10 bg-gray-700/50 border-gray-600 focus:border-ember focus:ring-1 focus:ring-ember/50"
                 required
               />
@@ -94,6 +95,7 @@ export default function AuthForm({ defaultPanel }) {
                 name="password"
                 type="password"
                 placeholder="••••••••"
+                autoComplete="current-password"
                 className="pl-10 bg-gray-700/50 border-gray-600 focus:border-ember focus:ring-1 focus:ring-ember/50"
                 required
               />

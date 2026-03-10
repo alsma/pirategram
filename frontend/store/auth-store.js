@@ -1,6 +1,7 @@
 import { createStore } from 'zustand'
 import { register, logout as apiLogout, login } from '@/api/auth'
 import { navigate } from 'vike/client/router'
+import { useFriendsStore } from '@/store/friends-store'
 
 export const createAuthStore = (init = {}) =>
   createStore((set) => ({
@@ -24,6 +25,11 @@ export const createAuthStore = (init = {}) =>
 
     logout: async () => {
       try {
+        // Stop heartbeat before logout
+        if (typeof window !== 'undefined') {
+          const friendsStore = useFriendsStore.getState()
+          friendsStore.stopHeartbeat()
+        }
         await apiLogout()
       } finally {
         set({ user: null, isAuthenticated: false })

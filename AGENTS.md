@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `backend/` is a Laravel 12 API (PHP 8.4). Core domains live in `backend/app/` (e.g., `Auth/`, `Game/`, `MatchMaking/`, `User/`). HTTP routes are under `backend/routes/`, tests in `backend/tests/`.
+- `backend/` is a Laravel 12 API (PHP 8.5). Core domains live in `backend/app/` (e.g., `Auth/`, `Game/`, `MatchMaking/`, `User/`). HTTP routes are under `backend/routes/`, tests in `backend/tests/`.
 - `frontend/` is a React 19 + Vike SSR app. Pages are file-based under `frontend/pages/`, shared UI in `frontend/components/`, state in `frontend/store/`, and API helpers in `frontend/api/`.
 - `infra/dev/` contains the Docker Compose dev environment (nginx, php-fpm, frontend, redis, mysql, etc.).
 

@@ -35,7 +35,7 @@ class PartyApiTest extends TestCase
 
         $this->actingAs($member, 'sanctum');
         $response = $this->postJson('/api/mm/party/join', [
-            'partyId' => $party->id,
+            'partyHash' => $party->getHashedId(),
         ]);
 
         $response->assertOk()->assertJson([
@@ -55,10 +55,12 @@ class PartyApiTest extends TestCase
 
         $this->actingAs($user, 'sanctum');
         $response = $this->postJson('/api/mm/party/join', [
-            'partyId' => 99999,
+            'partyHash' => Party::keyToHashedId(99999),
         ]);
 
-        $response->assertUnprocessable();
+        $response->assertStatus(422)->assertJson([
+            'message' => 'Party not found.',
+        ]);
     }
 
     public function test_join_party_endpoint_removes_user_from_previous_party(): void
@@ -74,7 +76,7 @@ class PartyApiTest extends TestCase
 
         $this->actingAs($member, 'sanctum');
         $response = $this->postJson('/api/mm/party/join', [
-            'partyId' => $party2->id,
+            'partyHash' => $party2->getHashedId(),
         ]);
 
         $response->assertStatus(422)->assertJson([
@@ -91,9 +93,7 @@ class PartyApiTest extends TestCase
         $this->partyManager->join($member->id, $party);
 
         $this->actingAs($member, 'sanctum');
-        $response = $this->postJson('/api/mm/party/leave', [
-            'partyId' => $party->id,
-        ]);
+        $response = $this->postJson('/api/mm/party/leave');
 
         $response->assertOk()->assertJson([
             'ok' => true,
@@ -115,9 +115,7 @@ class PartyApiTest extends TestCase
         $this->partyManager->join($member->id, $party);
 
         $this->actingAs($leader, 'sanctum');
-        $response = $this->postJson('/api/mm/party/leave', [
-            'partyId' => $party->id,
-        ]);
+        $response = $this->postJson('/api/mm/party/leave');
 
         $response->assertOk();
 
@@ -131,9 +129,7 @@ class PartyApiTest extends TestCase
         $party = $this->partyManager->createParty($leader->id);
 
         $this->actingAs($leader, 'sanctum');
-        $response = $this->postJson('/api/mm/party/leave', [
-            'partyId' => $party->id,
-        ]);
+        $response = $this->postJson('/api/mm/party/leave');
 
         $response->assertOk();
 
@@ -157,10 +153,49 @@ class PartyApiTest extends TestCase
         $this->actingAs($member4, 'sanctum');
 
         $response = $this->postJson('/api/mm/party/join', [
-            'partyId' => $party->id,
+            'partyHash' => $party->getHashedId(),
         ]);
 
         $response->assertStatus(422)
             ->assertJson(['message' => 'Party is full for mode '.GameMode::TwoVsTwo->value.'.']);
+    }
+
+    public function test_get_party_endpoint_returns_user_party(): void
+    {
+        $leader = User::factory()->create();
+        $member = User::factory()->create();
+
+        $party = $this->partyManager->createParty($leader->id);
+        $this->partyManager->join($member->id, $party);
+
+        $this->actingAs($member, 'sanctum');
+        $response = $this->getJson('/api/mm/party');
+
+        $response->assertOk()->assertJsonStructure([
+            'partyHash',
+            'leaderId',
+            'leaderHash',
+            'mode',
+            'members' => [
+                '*' => ['userId', 'userHash', 'username'],
+            ],
+            'maxPlayers',
+        ])->assertJson([
+            'partyHash' => $party->getHashedId(),
+            'leaderId' => $leader->id,
+            'leaderHash' => $leader->getHashedId(),
+        ]);
+    }
+
+    public function test_get_party_endpoint_returns_null_when_not_in_party(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user, 'sanctum');
+        $response = $this->getJson('/api/mm/party');
+
+        $response->assertOk();
+        $data = $response->json();
+        $this->assertTrue($data === null || $data === []);
     }
 }

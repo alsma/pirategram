@@ -36,8 +36,7 @@ class PartyManagementApiTest extends TestCase
 
         $this->actingAs($leader, 'sanctum');
         $response = $this->postJson('/api/mm/party/kick', [
-            'partyId' => $party->id,
-            'userId' => $member->id,
+            'memberUserId' => $member->getHashedId(),
         ]);
 
         $response->assertOk()->assertJson(['ok' => true]);
@@ -57,8 +56,7 @@ class PartyManagementApiTest extends TestCase
 
         $this->actingAs($member1, 'sanctum');
         $response = $this->postJson('/api/mm/party/kick', [
-            'partyId' => $party->id,
-            'userId' => $member2->id,
+            'memberUserId' => $member2->getHashedId(),
         ]);
 
         $response->assertStatus(422)
@@ -72,8 +70,7 @@ class PartyManagementApiTest extends TestCase
 
         $this->actingAs($leader, 'sanctum');
         $response = $this->postJson('/api/mm/party/kick', [
-            'partyId' => $party->id,
-            'userId' => $leader->id,
+            'memberUserId' => $leader->getHashedId(),
         ]);
 
         $response->assertStatus(422)
@@ -90,8 +87,7 @@ class PartyManagementApiTest extends TestCase
 
         $this->actingAs($leader, 'sanctum');
         $response = $this->postJson('/api/mm/party/promote', [
-            'partyId' => $party->id,
-            'userId' => $member->id,
+            'newLeaderUserId' => $member->getHashedId(),
         ]);
 
         $response->assertOk()->assertJson(['ok' => true]);
@@ -114,8 +110,7 @@ class PartyManagementApiTest extends TestCase
 
         $this->actingAs($member1, 'sanctum');
         $response = $this->postJson('/api/mm/party/promote', [
-            'partyId' => $party->id,
-            'userId' => $member2->id,
+            'newLeaderUserId' => $member2->getHashedId(),
         ]);
 
         $response->assertStatus(422)
@@ -131,8 +126,7 @@ class PartyManagementApiTest extends TestCase
 
         $this->actingAs($leader, 'sanctum');
         $response = $this->postJson('/api/mm/party/promote', [
-            'partyId' => $party->id,
-            'userId' => $nonMember->id,
+            'newLeaderUserId' => $nonMember->getHashedId(),
         ]);
 
         $response->assertStatus(422)

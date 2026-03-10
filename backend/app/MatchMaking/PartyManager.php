@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\MatchMaking;
 
+use App\MatchMaking\Broadcasting\PartyInviteCreated;
+use App\MatchMaking\Broadcasting\PartyInviteDeclined;
 use App\MatchMaking\Broadcasting\PartyUpdated;
+use App\MatchMaking\Broadcasting\UserPartyUpdated;
 use App\MatchMaking\Models\Party;
 use App\MatchMaking\Models\PartyMember;
 use App\MatchMaking\Support\MatchMakingRedisKeys;
@@ -12,6 +15,7 @@ use App\MatchMaking\ValueObjects\GameMode;
 use App\MatchMaking\ValueObjects\GroupStatus;
 use App\MatchMaking\ValueObjects\PartyAction;
 use App\MatchMaking\ValueObjects\PartyStatus;
+use App\User\Models\User;
 use Illuminate\Redis\RedisManager;
 use Illuminate\Support\Str;
 
@@ -44,7 +48,7 @@ class PartyManager
 
             $this->syncRedisParty($party->id);
 
-            broadcast(new PartyUpdated($party->id, PartyAction::Created->value, $this->partyPayload($party->id)));
+            broadcast(new PartyUpdated($party->getHashedId(), PartyAction::Created->value, $this->partyPayload($party->id)));
 
             return $party;
         });
@@ -65,7 +69,7 @@ class PartyManager
                 $this->redis->del($this->rkParty($party->id));
                 $this->redis->zrem(MatchMakingRedisKeys::QUEUE_KEYS[$party->mode], "party:{$party->id}");
 
-                broadcast(new PartyUpdated($party->id, PartyAction::Disbanded->value));
+                broadcast(new PartyUpdated($party->getHashedId(), PartyAction::Disbanded->value));
             });
         } finally {
             $this->unlock($lock);
@@ -74,11 +78,20 @@ class PartyManager
 
     public function createInvite(int $leaderId, int $invitedUserId, string $mode, int $ttlSeconds = 120): void
     {
+        // Prevent inviting yourself
+        if ($leaderId === $invitedUserId) {
+            throw new \DomainException('Cannot invite yourself to a party.');
+        }
+
         // Use leader-level lock to prevent concurrent invite operations by same leader
         $leaderLock = $this->lockLeaderInvites($leaderId);
         try {
             $party = Party::where('leader_id', $leaderId)->first();
             if ($party) {
+                // Check if the invited user is already in the party
+                if (PartyMember::where('party_id', $party->id)->where('user_id', $invitedUserId)->exists()) {
+                    throw new \DomainException('User is already in your party.');
+                }
                 $lock = $this->lockParty($party->id);
                 try {
                     transaction(function () use ($party, $leaderId, $invitedUserId, &$mode, $ttlSeconds) {
@@ -89,6 +102,12 @@ class PartyManager
                         $this->redis->del($this->rkPartyInviteLeaderMode($leaderId));
 
                         $key = $this->rkPartyInvite($invitedUserId, $leaderId);
+
+                        // Check if there's already a pending invite - silently return if duplicate
+                        if ($this->redis->exists($key)) {
+                            return;
+                        }
+
                         $payload = [
                             'leader_id' => $leaderId,
                             'mode' => $mode,
@@ -98,6 +117,17 @@ class PartyManager
                         // Track this invite leader for easy cleanup
                         $this->redis->sadd($this->rkUserInviteLeaders($invitedUserId), $leaderId);
                         $this->redis->expire($this->rkUserInviteLeaders($invitedUserId), $ttlSeconds + 60);
+
+                        // Broadcast invite to invited user
+                        $leader = User::findOrFail($leaderId);
+                        $invitedUser = User::findOrFail($invitedUserId);
+                        broadcast(new PartyInviteCreated(
+                            $invitedUser->getHashedId(),
+                            $leader->getHashedId(),
+                            $leader->username,
+                            $mode,
+                            $party->getHashedId()
+                        ));
                     });
                 } finally {
                     $this->unlock($lock);
@@ -112,6 +142,12 @@ class PartyManager
                 $this->redis->setex($this->rkPartyInviteLeaderMode($leaderId), $ttlSeconds, $mode);
 
                 $key = $this->rkPartyInvite($invitedUserId, $leaderId);
+
+                // Check if there's already a pending invite - silently return if duplicate
+                if ($this->redis->exists($key)) {
+                    return;
+                }
+
                 $payload = [
                     'leader_id' => $leaderId,
                     'mode' => $mode,
@@ -120,13 +156,23 @@ class PartyManager
                 // Track this invite leader for easy cleanup
                 $this->redis->sadd($this->rkUserInviteLeaders($invitedUserId), $leaderId);
                 $this->redis->expire($this->rkUserInviteLeaders($invitedUserId), $ttlSeconds + 60);
+
+                // Broadcast invite to invited user
+                $leader = User::findOrFail($leaderId);
+                $invitedUser = User::findOrFail($invitedUserId);
+                broadcast(new PartyInviteCreated(
+                    $invitedUser->getHashedId(),
+                    $leader->getHashedId(),
+                    $leader->username,
+                    $mode
+                ));
             }
         } finally {
             $this->unlock($leaderLock);
         }
     }
 
-    public function acceptInvite(int $userId, int $leaderId): void
+    public function acceptInvite(int $userId, int $leaderId): Party
     {
         // Lock the user to prevent them from accepting multiple invites simultaneously
         $userLock = $this->lockUser($userId);
@@ -161,6 +207,8 @@ class PartyManager
                 $this->join($userId, $party);
                 $this->clearUserInvites($userId);
                 $this->redis->del($this->rkPartyInviteLeaderMode($leaderId));
+
+                return $party->fresh();
             } finally {
                 $this->unlock($leaderLock);
             }
@@ -180,6 +228,15 @@ class PartyManager
 
         $this->redis->del($key);
         $this->redis->srem($this->rkUserInviteLeaders($userId), $leaderId);
+
+        // Broadcast decline to leader
+        $leader = User::findOrFail($leaderId);
+        $user = User::findOrFail($userId);
+        broadcast(new PartyInviteDeclined(
+            $leader->getHashedId(),
+            $user->getHashedId(),
+            $user->username
+        ));
     }
 
     public function join(int $userId, Party $party): void
@@ -208,7 +265,22 @@ class PartyManager
                 $this->cancelIfSearching($party->id, $party->mode);
 
                 $this->syncRedisParty($party->id);
-                broadcast(new PartyUpdated($party->id, PartyAction::MemberJoined->value, $this->partyPayload($party->id)));
+
+                $payload = $this->partyPayload($party->id);
+                $partyHash = $party->getHashedId();
+                $action = PartyAction::MemberJoined->value;
+
+                // Broadcast to party channel
+                broadcast(new PartyUpdated($partyHash, $action, $payload));
+
+                // Also broadcast to each member's user channel for real-time updates
+                $members = PartyMember::where('party_id', $party->id)->get();
+                foreach ($members as $member) {
+                    $user = User::find($member->user_id);
+                    if ($user) {
+                        broadcast(new UserPartyUpdated($user->getHashedId(), $action, $payload));
+                    }
+                }
             });
         } finally {
             $this->unlock($lock);
@@ -228,16 +300,25 @@ class PartyManager
                     ->orderBy('created_at')
                     ->pluck('user_id')
                     ->all();
+
                 if (empty($members)) {
                     $this->cancelIfSearching($party->id, $party->mode);
+                    PartyMember::where('party_id', $party->id)->delete();
                     $party->delete();
                     $this->redis->del($this->rkParty($party->id));
-                    broadcast(new PartyUpdated($party->id, PartyAction::Disbanded->value));
+                    broadcast(new PartyUpdated($party->getHashedId(), PartyAction::Disbanded->value));
+
+                    // Notify the leaving user that the party was disbanded
+                    $leavingUser = User::find($userId);
+                    if ($leavingUser) {
+                        broadcast(new UserPartyUpdated($leavingUser->getHashedId(), PartyAction::Disbanded->value));
+                    }
 
                     return;
                 }
 
-                if ($party->leader_id === $userId) {
+                $wasLeader = $party->leader_id === $userId;
+                if ($wasLeader) {
                     $party->leader_id = $members[0];
                     $party->save();
                 }
@@ -245,7 +326,28 @@ class PartyManager
                 $this->cancelIfSearching($party->id, $party->mode);
 
                 $this->syncRedisParty($party->id);
-                broadcast(new PartyUpdated($party->id, PartyAction::MemberLeft->value, $this->partyPayload($party->id)));
+
+                // Broadcast appropriate action
+                $action = $wasLeader ? PartyAction::LeaderChanged->value : PartyAction::MemberLeft->value;
+                $payload = $this->partyPayload($party->id);
+                $partyHash = $party->getHashedId();
+
+                broadcast(new PartyUpdated($partyHash, $action, $payload));
+
+                // Broadcast to each remaining member's user channel
+                $allMembers = PartyMember::where('party_id', $party->id)->get();
+                foreach ($allMembers as $member) {
+                    $user = User::find($member->user_id);
+                    if ($user) {
+                        broadcast(new UserPartyUpdated($user->getHashedId(), $action, $payload));
+                    }
+                }
+
+                // Notify the leaving user that they left the party (use Disbanded so frontend clears state)
+                $leavingUser = User::find($userId);
+                if ($leavingUser) {
+                    broadcast(new UserPartyUpdated($leavingUser->getHashedId(), PartyAction::Disbanded->value));
+                }
             });
         } finally {
             $this->unlock($lock);
@@ -269,7 +371,7 @@ class PartyManager
                 $party->save();
 
                 $this->syncRedisParty($party->id);
-                broadcast(new PartyUpdated($party->id, PartyAction::LeaderChanged->value, $this->partyPayload($party->id)));
+                broadcast(new PartyUpdated($party->getHashedId(), PartyAction::LeaderChanged->value, $this->partyPayload($party->id)));
             });
         } finally {
             $this->unlock($lock);
@@ -290,10 +392,24 @@ class PartyManager
 
                 PartyMember::where(['party_id' => $party->id, 'user_id' => $memberUserId])->delete();
 
-                $this->cancelIfSearching($party->id, $party->mode);
+                // Check if only the leader remains after kicking
+                $remainingMembers = PartyMember::where('party_id', $party->id)->count();
+                if ($remainingMembers <= 1) {
+                    // Only leader left, disband the party
+                    $this->cancelIfSearching($party->id, $party->mode);
+                    PartyMember::where('party_id', $party->id)->delete();
+                    $party->delete();
 
-                $this->syncRedisParty($party->id);
-                broadcast(new PartyUpdated($party->id, PartyAction::MemberKicked->value, $this->partyPayload($party->id)));
+                    $this->redis->del($this->rkParty($party->id));
+                    $this->redis->zrem(MatchMakingRedisKeys::QUEUE_KEYS[$party->mode], "party:{$party->id}");
+
+                    broadcast(new PartyUpdated($party->getHashedId(), PartyAction::Disbanded->value));
+                } else {
+                    $this->cancelIfSearching($party->id, $party->mode);
+
+                    $this->syncRedisParty($party->id);
+                    broadcast(new PartyUpdated($party->getHashedId(), PartyAction::MemberKicked->value, $this->partyPayload($party->id)));
+                }
             });
         } finally {
             $this->unlock($lock);
@@ -325,7 +441,7 @@ class PartyManager
                 $this->cancelIfSearching($party->id, $mode);
 
                 $this->syncRedisParty($party->id);
-                broadcast(new PartyUpdated($party->id, PartyAction::ModeChanged->value, $this->partyPayload($party->id)));
+                broadcast(new PartyUpdated($party->getHashedId(), PartyAction::ModeChanged->value, $this->partyPayload($party->id)));
             });
         } finally {
             $this->unlock($lock);
@@ -361,9 +477,8 @@ class PartyManager
     private function cancelIfSearching(int $partyId, string $mode): void
     {
         $hash = $this->redis->hgetall($this->rkParty($partyId));
-        if (($hash['status'] ?? null) === 'searching') {
-            $this->matchMakingManager->cancelSearch($partyId, $mode);
-            // Broadcast cancel (MatchMakingManager already does)
+        if (($hash['status'] ?? null) === GroupStatus::Searching->value) {
+            $this->redis->zrem(MatchMakingRedisKeys::QUEUE_KEYS[$mode], "party:{$partyId}");
         }
     }
 
@@ -498,18 +613,36 @@ LUA;
     private function partyPayload(int $partyId): array
     {
         $party = Party::findOrFail($partyId);
+        $partyHash = $party->getHashedId();
         $members = PartyMember::with('user:id,username')
             ->where('party_id', $partyId)
             ->get()
-            ->map(fn ($m) => ['id' => $m->user_id, 'username' => $m->user->username])
+            ->map(fn ($m) => [
+                'userId' => $m->user_id,
+                'userHash' => $m->user->getHashedId(),
+                'username' => $m->user->username,
+            ])
             ->values()->all();
 
         return [
-            'partyId' => $partyId,
+            'partyHash' => $partyHash,
             'leaderId' => $party->leader_id,
+            'leaderHash' => User::find($party->leader_id)?->getHashedId(),
             'mode' => $party->mode,
             'members' => $members,
             'maxPlayers' => self::MODES[$party->mode] ?? 4,
         ];
+    }
+
+    private function broadcastToPartyMembers(int $partyId, string $action, array $payload = []): void
+    {
+        $members = PartyMember::with('user')->where('party_id', $partyId)->get();
+        $partyHash = Party::findOrFail($partyId)->getHashedId();
+
+        foreach ($members as $member) {
+            broadcast(new PartyUpdated($partyHash, $action, $payload))
+                ->toOthers()
+                ->via('pusher');
+        }
     }
 }

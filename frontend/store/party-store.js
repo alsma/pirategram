@@ -1,14 +1,25 @@
 import { create } from "zustand"
 import { startSearch, cancelSearch, acceptTicket, declineTicket, clearSessionId, getSessionId, getState } from '@/api/matchmaking.js'
-import { GroupStatus, SlotStatus } from '@/lib/constants/matchmaking.js'
+import {
+  getPartyState,
+  createPartyInvite,
+  acceptPartyInvite,
+  declinePartyInvite,
+  leaveParty,
+  disbandParty,
+  kickPartyMember,
+  promotePartyMember,
+  startPartySearch,
+  cancelPartySearch
+} from '@/api/party.js'
+import { GroupStatus, SlotStatus, PartyAction } from '@/lib/constants/matchmaking.js'
 import { toast } from 'sonner'
 
-// Mock data for demo
-const mockParty = [{ id: "current-user-id", handle: "Pirate#1234", avatar: "" }]
-
 export const usePartyStore = create((set, get) => ({
-  party: mockParty,
-  leaderId: "current-user-id",
+  // Party state
+  party: null, // { partyHash, leaderId, leaderHash, mode, members: [{ userId, userHash, username }], maxPlayers }
+  pendingInvites: [], // [{ leaderHash, leaderUsername, mode, partyHash? }]
+  isLoadingParty: true,
 
   state: GroupStatus.Idle,
   mode: null,
@@ -27,21 +38,109 @@ export const usePartyStore = create((set, get) => ({
   // Match data
   matchId: null,
 
-  addToParty: (member) => {
-    set((state) => ({
-      party: [...state.party, member],
-    }))
+  // Party actions
+  sendInvite: async (userHash, mode, username = null) => {
+    try {
+      await createPartyInvite(userHash, mode)
+      if (username) {
+        toast.success(`Party invite sent to ${username}!`)
+      } else {
+        toast.success('Party invite sent!')
+      }
+    } catch (error) {
+      console.error('Failed to send invite:', error)
+      toast.error(error.details?.message || 'Failed to send invite')
+    }
   },
 
-  removeFromParty: (memberId) => {
-    set((state) => ({
-      party: state.party.filter((m) => m.id !== memberId),
-    }))
+  acceptInvite: async (leaderHash) => {
+    try {
+      const partyData = await acceptPartyInvite(leaderHash)
+      // Update state immediately with returned party data
+      set((state) => ({
+        party: partyData,
+        pendingInvites: state.pendingInvites.filter(inv => inv.leaderHash !== leaderHash)
+      }))
+      toast.success('Invite accepted!')
+    } catch (error) {
+      console.error('Failed to accept invite:', error)
+      toast.error(error.details?.message || 'Failed to accept invite')
+    }
+  },
+
+  declineInvite: async (leaderHash) => {
+    try {
+      await declinePartyInvite(leaderHash)
+      set((state) => ({
+        pendingInvites: state.pendingInvites.filter(inv => inv.leaderHash !== leaderHash)
+      }))
+      toast.info('Invite declined')
+    } catch (error) {
+      console.error('Failed to decline invite:', error)
+      toast.error(error.details?.message || 'Failed to decline invite')
+    }
+  },
+
+  leaveParty: async () => {
+    try {
+      await leaveParty()
+      // State will be updated via WebSocket event
+      toast.info('Left the party')
+    } catch (error) {
+      console.error('Failed to leave party:', error)
+      toast.error(error.details?.message || 'Failed to leave party')
+    }
+  },
+
+  disbandParty: async () => {
+    try {
+      await disbandParty()
+      // State will be updated via WebSocket event
+      toast.info('Party disbanded')
+    } catch (error) {
+      console.error('Failed to disband party:', error)
+      toast.error(error.details?.message || 'Failed to disband party')
+    }
+  },
+
+  kickMember: async (memberHash) => {
+    try {
+      const { party } = get()
+      if (!party) return
+
+      await kickPartyMember(memberHash)
+      // State will be updated via WebSocket event
+      toast.info('Member kicked from party')
+    } catch (error) {
+      console.error('Failed to kick member:', error)
+      toast.error(error.details?.message || 'Failed to kick member')
+    }
+  },
+
+  promoteMember: async (memberHash) => {
+    try {
+      const { party } = get()
+      if (!party) return
+
+      await promotePartyMember(memberHash)
+      // State will be updated via WebSocket event
+      toast.success('Leadership transferred')
+    } catch (error) {
+      console.error('Failed to promote member:', error)
+      toast.error(error.details?.message || 'Failed to promote member')
+    }
   },
 
   startQueue: async (mode) => {
+    const { party } = get()
+
     try {
-      await startSearch(mode)
+      // If in a party, use party search, otherwise solo search
+      if (party) {
+        await startPartySearch(party.partyHash)
+      } else {
+        await startSearch(mode)
+      }
       // State will be updated via WebSocket event
     } catch (error) {
       console.error('Failed to start search:', error)
@@ -61,8 +160,15 @@ export const usePartyStore = create((set, get) => ({
   },
 
   cancelQueue: async () => {
+    const { party } = get()
+
     try {
-      await cancelSearch()
+      // If in a party, use party cancel, otherwise solo cancel
+      if (party) {
+        await cancelPartySearch()
+      } else {
+        await cancelSearch()
+      }
       // State will be updated via WebSocket event
     } catch (error) {
       console.error('Failed to cancel search:', error)
@@ -93,7 +199,51 @@ export const usePartyStore = create((set, get) => ({
     }
   },
 
-  // WebSocket event handlers
+  // Party WebSocket event handlers
+  handlePartyUpdated: (data) => {
+    const { action, state } = data
+
+    switch (action) {
+      case PartyAction.Created:
+      case PartyAction.MemberJoined:
+      case PartyAction.MemberLeft:
+      case PartyAction.MemberKicked:
+      case PartyAction.LeaderChanged:
+      case PartyAction.ModeChanged:
+        set({ party: state })
+        break
+      case PartyAction.Disbanded:
+        set({ party: null })
+        toast.info('Party disbanded')
+        break
+      default:
+        break
+    }
+  },
+
+  handleInviteReceived: (data) => {
+    set((state) => ({
+      pendingInvites: [
+        ...state.pendingInvites,
+        {
+          leaderHash: data.leaderHash,
+          leaderUsername: data.leaderUsername,
+          mode: data.mode,
+          partyHash: data.partyHash,
+        }
+      ]
+    }))
+    toast.info(`Party invite from ${data.leaderUsername}`, {
+      description: `Mode: ${data.mode}`,
+      duration: 10000,
+    })
+  },
+
+  handleInviteDeclined: (data) => {
+    toast.info(`${data.username} declined your party invite`)
+  },
+
+  // Matchmaking WebSocket event handlers
   handleSearchUpdated: (data) => {
     set({
       state: data.state,
@@ -166,10 +316,19 @@ export const usePartyStore = create((set, get) => ({
 
   restoreState: async () => {
     try {
-      const state = await getState()
+      set({ isLoadingParty: true })
+      // Fetch party state and matchmaking state in parallel
+      const [partyData, mmState] = await Promise.all([
+        getPartyState(),
+        getState()
+      ])
 
-      // Update store based on backend state
-      if (state.state === GroupStatus.Idle) {
+      // Restore party state (ensure it's null or has proper structure)
+      const validParty = partyData && partyData.partyHash && partyData.members ? partyData : null
+      set({ party: validParty, isLoadingParty: false })
+
+      // Update store based on backend matchmaking state
+      if (mmState.state === GroupStatus.Idle) {
         set({
           state: GroupStatus.Idle,
           mode: null,
@@ -182,39 +341,40 @@ export const usePartyStore = create((set, get) => ({
           yourSlot: null,
           matchId: null,
         })
-      } else if (state.state === GroupStatus.Searching) {
+      } else if (mmState.state === GroupStatus.Searching) {
         set({
           state: GroupStatus.Searching,
-          mode: state.mode,
-          searchStartedAt: state.searchStartedAt,
-          searchExpiresAt: state.searchExpiresAt,
+          mode: mmState.mode,
+          searchStartedAt: mmState.searchStartedAt,
+          searchExpiresAt: mmState.searchExpiresAt,
         })
-      } else if (state.state === GroupStatus.Proposed) {
+      } else if (mmState.state === GroupStatus.Proposed) {
         set({
           state: GroupStatus.Proposed,
-          mode: state.mode,
-          ticketId: state.ticketId,
-          readyExpiresAt: state.readyExpiresAt,
-          slots: state.slots || [],
-          yourSlot: state.yourSlot || null,
+          mode: mmState.mode,
+          ticketId: mmState.ticketId,
+          readyExpiresAt: mmState.readyExpiresAt,
+          slots: mmState.slots || [],
+          yourSlot: mmState.yourSlot || null,
         })
-      } else if (state.state === GroupStatus.Starting) {
+      } else if (mmState.state === GroupStatus.Starting) {
         set({
           state: GroupStatus.Starting,
-          mode: state.mode,
-          ticketId: state.ticketId,
-          startAt: state.startAt,
-          slots: state.slots || [],
-          yourSlot: state.yourSlot || null,
+          mode: mmState.mode,
+          ticketId: mmState.ticketId,
+          startAt: mmState.startAt,
+          slots: mmState.slots || [],
+          yourSlot: mmState.yourSlot || null,
         })
-      } else if (state.state === GroupStatus.InMatch) {
+      } else if (mmState.state === GroupStatus.InMatch) {
         set({
           state: GroupStatus.InMatch,
-          matchId: state.matchId,
+          matchId: mmState.matchId,
         })
       }
     } catch (error) {
       console.error('Failed to restore matchmaking state:', error)
+      set({ isLoadingParty: false })
     }
   },
 }))

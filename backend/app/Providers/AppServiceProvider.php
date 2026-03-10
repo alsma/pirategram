@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Auth\Events\UserLoggedOut;
+use App\MatchMaking\Events\MatchStarted;
+use App\Social\Listeners\SetUserOfflineOnLogoutListener;
+use App\Social\Listeners\SetUsersInGameOnMatchStartListener;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -18,6 +23,8 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        Event::listen(UserLoggedOut::class, SetUserOfflineOnLogoutListener::class);
+        Event::listen(MatchStarted::class, SetUsersInGameOnMatchStartListener::class);
         $this->listenQueryDebugEvents();
     }
 

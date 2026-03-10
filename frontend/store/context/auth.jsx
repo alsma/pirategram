@@ -22,5 +22,6 @@ export const useAuthStore = (selector, equalityFn) => {
   if (!store)
     console.error(new Error('❌ useAuthStore must be used inside <AuthProvider>'))
 
-  return useZustandStore(store, selector, equalityFn)
+  const resolvedStore = store ?? initAuthStore()
+  return useZustandStore(resolvedStore, selector, equalityFn)
 }

@@ -10,14 +10,14 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 readonly class PartyUpdated implements ShouldBroadcastNow
 {
     public function __construct(
-        public int $partyId,
+        public string $partyHash,
         public string $action,
         public array $state = [],
     ) {}
 
     public function broadcastOn(): PrivateChannel
     {
-        return new PrivateChannel("party.{$this->partyId}");
+        return new PrivateChannel("party.{$this->partyHash}");
     }
 
     public function broadcastAs(): string

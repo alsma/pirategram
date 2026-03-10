@@ -12,14 +12,20 @@ class StartPartySearchRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'partyId' => 'required|integer|exists:parties,id',
+            'partyHash' => 'required|string',
             'sessionId' => 'required|uuid',
         ];
     }
 
     public function party(): Party
     {
-        return Party::findOrFail($this->input('partyId'));
+        $party = Party::ofHashedId($this->input('partyHash'))->first();
+
+        if (!$party) {
+            throw new \DomainException('Party not found.');
+        }
+
+        return $party;
     }
 
     public function sessionId(): string

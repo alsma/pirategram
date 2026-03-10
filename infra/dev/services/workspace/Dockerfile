@@ -2,7 +2,7 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LC_ALL=C.UTF-8
-ARG PHP_VER=8.4
+ARG PHP_VER=8.5
 
 RUN apt-get autoremove && apt-get update -q && \
     apt-get install -yq --no-install-recommends build-essential apt-utils less libffi-dev libssl-dev software-properties-common \
@@ -11,7 +11,7 @@ RUN apt-get autoremove && apt-get update -q && \
     apt-get install -yq --no-install-recommends \
     php${PHP_VER}-cli php${PHP_VER}-xml php${PHP_VER}-bcmath php${PHP_VER}-curl \
     php${PHP_VER}-gd php${PHP_VER}-imagick php${PHP_VER}-mbstring php${PHP_VER}-mysql \
-    php${PHP_VER}-opcache php${PHP_VER}-redis php${PHP_VER}-zip php${PHP_VER}-gmp && \
+    php${PHP_VER}-redis php${PHP_VER}-zip php${PHP_VER}-gmp && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
     rm /var/log/lastlog /var/log/faillog

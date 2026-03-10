@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\MatchMaking;
 
 use App\MatchMaking\Broadcasting\MMMatchStarted;
+use App\MatchMaking\Events\MatchStarted;
 use App\MatchMaking\Broadcasting\MMSearchUpdated;
 use App\MatchMaking\Broadcasting\MMStarting;
 use App\MatchMaking\Broadcasting\MMTicketCreated;
@@ -477,6 +478,8 @@ class MatchMakingManager
                 broadcast(new MMMatchStarted($user->getHashedId(), $matchStarted));
             }
         }
+
+        event(new MatchStarted($players, $match->id));
     }
 
     public function processTick(): void

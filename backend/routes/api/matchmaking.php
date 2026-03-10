@@ -9,6 +9,8 @@ use App\MatchMaking\Http\Controllers\CancelSearchController;
 use App\MatchMaking\Http\Controllers\CreatePartyInviteController;
 use App\MatchMaking\Http\Controllers\DeclinePartyInviteController;
 use App\MatchMaking\Http\Controllers\DeclineTicketController;
+use App\MatchMaking\Http\Controllers\DisbandPartyController;
+use App\MatchMaking\Http\Controllers\GetPartyController;
 use App\MatchMaking\Http\Controllers\GetStateController;
 use App\MatchMaking\Http\Controllers\JoinPartyController;
 use App\MatchMaking\Http\Controllers\KickPartyMemberController;
@@ -27,8 +29,10 @@ Route::prefix('/mm')
         Route::post('/ticket/{ticketId}/decline', DeclineTicketController::class);
 
         // Party endpoints
+        Route::get('/party', GetPartyController::class);
         Route::post('/party/join', JoinPartyController::class);
         Route::post('/party/leave', LeavePartyController::class);
+        Route::post('/party/disband', DisbandPartyController::class);
         Route::post('/party/invite', CreatePartyInviteController::class);
         Route::post('/party/invite/accept', AcceptPartyInviteController::class);
         Route::post('/party/invite/decline', DeclinePartyInviteController::class);

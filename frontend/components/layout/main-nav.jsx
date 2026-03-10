@@ -114,14 +114,14 @@ export default function MainNav() {
                 <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                   <Avatar className="h-9 w-9 border border-ember/30">
                     <AvatarImage src={user?.avatar || ''} />
-                    <AvatarFallback className="bg-gray-800">{user?.handle?.substring(0, 2) || '?'}</AvatarFallback>
+                    <AvatarFallback className="bg-gray-800">{user?.username?.substring(0, 2).toUpperCase() || '?'}</AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 panel-texture border border-ember/20">
                 <div className="flex items-center justify-start gap-2 p-2">
                   <div className="flex flex-col space-y-0.5 leading-none">
-                    <p className="font-medium text-sm text-white">{user?.handle || 'Unknown Player'}</p>
+                    <p className="font-medium text-sm text-white">{user?.username || 'Unknown Player'}</p>
                     <p className="text-xs text-gray-400">{user?.email || ''}</p>
                   </div>
                 </div>
@@ -207,10 +207,10 @@ export default function MainNav() {
                   <div className="flex items-center px-4">
                     <Avatar className="h-10 w-10 border border-ember/30 mr-3">
                       <AvatarImage src={user?.avatar || ''} />
-                      <AvatarFallback className="bg-gray-800">{user?.handle?.substring(0, 2) || '?'}</AvatarFallback>
+                      <AvatarFallback className="bg-gray-800">{user?.username?.substring(0, 2).toUpperCase() || '?'}</AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="font-medium text-white">{user?.handle || 'Unknown Player'}</p>
+                      <p className="font-medium text-white">{user?.username || 'Unknown Player'}</p>
                       <p className="text-xs text-gray-400">{user?.email || ''}</p>
                     </div>
                   </div>

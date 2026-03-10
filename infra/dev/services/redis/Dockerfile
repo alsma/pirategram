@@ -1,4 +1,4 @@
-FROM redis:7.4
+FROM redis:8.6
 
 VOLUME /data
 

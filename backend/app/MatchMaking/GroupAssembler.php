@@ -31,7 +31,7 @@ class GroupAssembler
     private function tryAssemble1v1(array $groups): ?array
     {
         // strictly singles
-        $singles = array_filter($groups, fn ($g) => (int) $g['size'] === 1);
+        $singles = array_filter($groups, fn (array $g) => (int) $g['size'] === 1);
 
         $byMmr = $this->sortByBaseMmr($singles);
         $n = count($byMmr);

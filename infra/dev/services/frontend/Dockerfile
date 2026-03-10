@@ -1,4 +1,4 @@
-FROM node:22.12.0-alpine
+FROM node:25-alpine
 
 RUN apk add --update --no-cache python3 make g++ git openssh tar pngquant && \
      ln -sf python3 /usr/bin/python && \

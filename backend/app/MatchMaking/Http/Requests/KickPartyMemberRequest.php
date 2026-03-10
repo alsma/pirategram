@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\MatchMaking\Http\Requests;
 
 use App\MatchMaking\Models\Party;
+use App\MatchMaking\Models\PartyMember;
+use App\User\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 
 class KickPartyMemberRequest extends FormRequest
@@ -12,18 +14,30 @@ class KickPartyMemberRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'partyId' => 'required|integer|exists:parties,id',
-            'userId' => 'required|integer|exists:users,id',
+            'memberUserId' => 'required|string',
         ];
     }
 
     public function party(): Party
     {
-        return Party::findOrFail($this->input('partyId'));
+        $member = PartyMember::where('user_id', $this->user()->id)->first();
+
+        if (!$member) {
+            throw new \DomainException('Not in a party.');
+        }
+
+        return Party::findOrFail($member->party_id);
     }
 
     public function memberUserId(): int
     {
-        return (int) $this->input('userId');
+        $hashedId = $this->input('memberUserId');
+        $user = User::ofHashedId($hashedId)->first();
+
+        if (!$user) {
+            throw new \DomainException('User not found.');
+        }
+
+        return $user->id;
     }
 }

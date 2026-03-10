@@ -6,6 +6,7 @@ namespace App\Auth;
 
 use App\Auth\Data\LoginDTO;
 use App\Auth\Data\RegisterDTO;
+use App\Auth\Events\UserLoggedOut;
 use App\Auth\Events\UserRegistered;
 use App\Auth\Events\UserRegistering;
 use App\Exceptions\LocalizedException;
@@ -69,6 +70,10 @@ class AuthManager
 
     public function logout(): void
     {
+        $user = Auth::user();
+        if ($user) {
+            event(new UserLoggedOut($user));
+        }
         Auth::logout();
     }
 }

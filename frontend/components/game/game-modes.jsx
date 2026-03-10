@@ -41,11 +41,14 @@ export default function GameModes() {
   const { addSimpleSuccessToast, addSimpleErrorToast } = useToastStore()
 
   const isEligible = (mode) => {
-    const partySize = party.length
+    const partySize = party?.members?.length || 0
 
-    if (mode.id === GameMode.OneOnOne && partySize === 1) return true
-    if (mode.id === GameMode.TwoVsTwo && (partySize === 1 || partySize === 2 || partySize === 4)) return true
-    if (mode.id === GameMode.FreeForAll4 && partySize >= 1 && partySize <= 4) return true
+    // If not in a party, solo player (size 1)
+    const effectiveSize = partySize === 0 ? 1 : partySize
+
+    if (mode.id === GameMode.OneOnOne && effectiveSize === 1) return true
+    if (mode.id === GameMode.TwoVsTwo && (effectiveSize === 1 || effectiveSize === 2 || effectiveSize === 4)) return true
+    if (mode.id === GameMode.FreeForAll4 && effectiveSize >= 1 && effectiveSize <= 4) return true
 
     return false
   }
@@ -101,7 +104,7 @@ export default function GameModes() {
                   <div className="flex items-center text-burnt text-sm mt-2">
                     <Info className="h-4 w-4 mr-1" />
                     <span>
-                      {party.length > mode.maxParty
+                      {(party?.members?.length || 0) > mode.maxParty
                         ? "Party too large for this mode"
                         : "Adjust party size for this mode"}
                     </span>

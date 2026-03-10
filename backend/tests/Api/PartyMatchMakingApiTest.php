@@ -43,7 +43,7 @@ class PartyMatchMakingApiTest extends TestCase
 
         $this->actingAs($leader, 'sanctum');
         $response = $this->postJson('/api/mm/party/search/start', [
-            'partyId' => $party->id,
+            'partyHash' => $party->getHashedId(),
             'sessionId' => $sessionId,
         ]);
 
@@ -69,7 +69,7 @@ class PartyMatchMakingApiTest extends TestCase
 
         $this->actingAs($member, 'sanctum');
         $response = $this->postJson('/api/mm/party/search/start', [
-            'partyId' => $party->id,
+            'partyHash' => $party->getHashedId(),
             'sessionId' => $sessionId,
         ]);
 

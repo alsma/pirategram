@@ -34,8 +34,8 @@ docker-compose exec frontend sh         # Enter Node container
 ## Architecture
 
 ### Directory Structure
-- `backend/` - Laravel 12.x PHP application (PHP 8.4)
-- `frontend/` - React 19 + Vike SSR application (Node 22)
+- `backend/` - Laravel 12.x PHP application (PHP 8.5)
+- `frontend/` - React 19 + Vike SSR application (Node 25)
 - `infra/dev/` - Docker Compose development environment
 
 ### Backend Organization (`backend/app/`)

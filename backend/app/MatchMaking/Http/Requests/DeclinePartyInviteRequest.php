@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\MatchMaking\Http\Requests;
 
+use App\User\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 
 class DeclinePartyInviteRequest extends FormRequest
@@ -11,12 +12,19 @@ class DeclinePartyInviteRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'leaderId' => 'required|integer|exists:users,id',
+            'leaderId' => 'required|string',
         ];
     }
 
     public function leaderId(): int
     {
-        return (int) $this->input('leaderId');
+        $hashedId = $this->input('leaderId');
+        $user = User::ofHashedId($hashedId)->first();
+
+        if (!$user) {
+            throw new \DomainException('Leader not found.');
+        }
+
+        return $user->id;
     }
 }
